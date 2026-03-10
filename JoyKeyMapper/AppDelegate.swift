@@ -7,11 +7,8 @@
 //
 
 import AppKit
-import ServiceManagement
 import UserNotifications
 import JoyConSwift
-
-let helperAppID: CFString = "cn.qibinc.JoyMapperSiliconLauncher" as CFString
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
@@ -140,15 +137,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
             item.title = "(\(noControllers))"
             item.isEnabled = false
             self.controllersMenu?.submenu?.addItem(item)
-        }
-    }
-    
-    // MARK: - Helper app settings
-    
-    func setLoginItem(enabled: Bool) {
-        let succeeded = SMLoginItemSetEnabled(helperAppID, enabled)
-        if (!succeeded) {
-            
         }
     }
     
