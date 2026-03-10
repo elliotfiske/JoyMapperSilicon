@@ -59,6 +59,8 @@ class GameController {
     var isLeftDragging: Bool = false
     var isRightDragging: Bool = false
     var isCenterDragging: Bool = false
+    var isButton4Dragging: Bool = false
+    var isButton5Dragging: Bool = false
     
     var lastAccess: Date? = nil
     var timer: Timer? = nil
@@ -115,6 +117,8 @@ class GameController {
                 self.rightGripColor = rightGripColor
             }
         }
+
+        self.updateKeyMap()
     }
     
     // MARK: - Controller event handlers
@@ -239,6 +243,12 @@ class GameController {
                 } else if config.mouseButton == 2 {
                     event = CGEvent(mouseEventSource: source, mouseType: .otherMouseDown, mouseCursorPosition: cursorPos, mouseButton: .center)
                     self.isCenterDragging = true
+                } else if config.mouseButton == 3 {
+                    event = CGEvent(mouseEventSource: source, mouseType: .otherMouseDown, mouseCursorPosition: cursorPos, mouseButton: CGMouseButton(rawValue: 3)!)
+                    self.isButton4Dragging = true
+                } else if config.mouseButton == 4 {
+                    event = CGEvent(mouseEventSource: source, mouseType: .otherMouseDown, mouseCursorPosition: cursorPos, mouseButton: CGMouseButton(rawValue: 4)!)
+                    self.isButton5Dragging = true
                 }
                 event?.flags = CGEventFlags(rawValue: CGEventFlags.RawValue(config.modifiers))
                 event?.post(tap: .cghidEventTap)
@@ -295,6 +305,12 @@ class GameController {
                 } else if config.mouseButton == 2 {
                     event = CGEvent(mouseEventSource: source, mouseType: .otherMouseUp, mouseCursorPosition: cursorPos, mouseButton: .center)
                     self.isCenterDragging = false
+                } else if config.mouseButton == 3 {
+                    event = CGEvent(mouseEventSource: source, mouseType: .otherMouseUp, mouseCursorPosition: cursorPos, mouseButton: CGMouseButton(rawValue: 3)!)
+                    self.isButton4Dragging = false
+                } else if config.mouseButton == 4 {
+                    event = CGEvent(mouseEventSource: source, mouseType: .otherMouseUp, mouseCursorPosition: cursorPos, mouseButton: CGMouseButton(rawValue: 4)!)
+                    self.isButton5Dragging = false
                 }
                 event?.post(tap: .cghidEventTap)
             }
@@ -320,6 +336,12 @@ class GameController {
             event?.post(tap: .cghidEventTap)
         } else if self.isCenterDragging {
             let event = CGEvent(mouseEventSource: source, mouseType: .otherMouseDragged, mouseCursorPosition: newPos, mouseButton: .center)
+            event?.post(tap: .cghidEventTap)
+        } else if self.isButton4Dragging {
+            let event = CGEvent(mouseEventSource: source, mouseType: .otherMouseDragged, mouseCursorPosition: newPos, mouseButton: CGMouseButton(rawValue: 3)!)
+            event?.post(tap: .cghidEventTap)
+        } else if self.isButton5Dragging {
+            let event = CGEvent(mouseEventSource: source, mouseType: .otherMouseDragged, mouseCursorPosition: newPos, mouseButton: CGMouseButton(rawValue: 4)!)
             event?.post(tap: .cghidEventTap)
         } else {
             let event = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: newPos, mouseButton: .left)

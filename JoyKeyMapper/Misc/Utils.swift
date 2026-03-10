@@ -12,7 +12,9 @@ import InputMethodKit
 let mouseButtonNames: [String] = [
     "Left Click",
     "Right Click",
-    "Center Click"
+    "Center Click",
+    "Button 4",
+    "Button 5"
 ]
 let localizedMouseButtonNames = mouseButtonNames.map {
     NSLocalizedString($0, comment: $0)
