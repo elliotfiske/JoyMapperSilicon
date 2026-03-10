@@ -115,6 +115,8 @@ class GameController {
                 self.rightGripColor = rightGripColor
             }
         }
+
+        self.updateKeyMap()
     }
     
     // MARK: - Controller event handlers
