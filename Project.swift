@@ -36,6 +36,13 @@ let project = Project(
                     path: "scripts/set_build_number.sh",
                     name: "Set build number"
                 ),
+                .post(
+                    script: """
+                    mkdir -p "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems"
+                    cp -R "${BUILT_PRODUCTS_DIR}/JoyMapperSiliconLauncher.app" "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems/"
+                    """,
+                    name: "Embed Login Items"
+                ),
             ],
             dependencies: [
                 .target(name: "JoyConSwift"),
@@ -50,8 +57,8 @@ let project = Project(
                     "CODE_SIGN_ENTITLEMENTS": "JoyKeyMapper/JoyKeyMapper.entitlements",
                 ],
                 configurations: [
-                    .debug("Debug"),
-                    .release("Release"),
+                    .debug(name: "Debug"),
+                    .release(name: "Release"),
                 ]
             ),
             coreDataModels: [
@@ -82,8 +89,8 @@ let project = Project(
                     "SKIP_INSTALL": "YES",
                 ],
                 configurations: [
-                    .debug("Debug"),
-                    .release("Release"),
+                    .debug(name: "Debug"),
+                    .release(name: "Release"),
                 ]
             )
         ),

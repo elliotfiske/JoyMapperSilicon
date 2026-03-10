@@ -6,6 +6,7 @@
 //  Copyright © 2019 DarkHorse. All rights reserved.
 //
 
+import AppKit
 import CoreData
 import JoyConSwift
 
