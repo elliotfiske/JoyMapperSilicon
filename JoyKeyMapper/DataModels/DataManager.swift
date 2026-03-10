@@ -226,7 +226,7 @@ class DataManager: NSObject {
     func createStickConfig() -> StickConfig {
         let stickConfig = StickConfig(context: self.container.viewContext)
 
-        stickConfig.speed = 10.0
+        stickConfig.speed = 25.0
         stickConfig.type = StickType.None.rawValue
 
         let left = self.createKeyMap()

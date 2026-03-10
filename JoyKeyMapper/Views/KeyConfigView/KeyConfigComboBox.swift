@@ -21,6 +21,7 @@ let keyCodeList: [Int] = [
     kVK_Delete,
     kVK_Escape,
     // kVK_CapsLock,
+    kVK_Function,
     kVK_RightShift,
     kVK_RightOption,
     kVK_RightControl,
