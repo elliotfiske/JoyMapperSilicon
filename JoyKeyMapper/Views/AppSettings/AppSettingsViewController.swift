@@ -48,7 +48,14 @@ class AppSettingsViewController: NSViewController {
     }
     
     @IBAction func didChangeLaunchOnLogin(_ sender: NSButton) {
-        AppSettings.launchOnLogin = self.launchOnLogin.state == .on
+        let enabled = self.launchOnLogin.state == .on
+        do {
+            try AppSettings.setLaunchOnLogin(enabled)
+        } catch {
+            self.launchOnLogin.state = enabled ? .off : .on
+            let alert = NSAlert(error: error)
+            alert.runModal()
+        }
     }
     
     @IBAction func didPushOK(_ sender: NSButton) {

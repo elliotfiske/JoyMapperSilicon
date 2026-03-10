@@ -9,8 +9,6 @@
 import Foundation
 import ServiceManagement
 
-let helperAppBundleID = "jp.0spec.JoyKeyMapperLauncher"
-
 class AppSettings {
     static var disconnectTime: Int {
         get {
@@ -20,7 +18,7 @@ class AppSettings {
             UserDefaults.standard.set(newValue, forKey: "disconnectTime")
         }
     }
-    
+
     static var notifyConnection: Bool {
         get {
             return UserDefaults.standard.bool(forKey: "notifyConnection")
@@ -29,7 +27,7 @@ class AppSettings {
             UserDefaults.standard.set(newValue, forKey: "notifyConnection")
         }
     }
-    
+
     static var notifyBatteryLevel: Bool {
         get {
             return UserDefaults.standard.bool(forKey: "notifyBatteryLevel")
@@ -38,7 +36,7 @@ class AppSettings {
             UserDefaults.standard.set(newValue, forKey: "notifyBatteryLevel")
         }
     }
-    
+
     static var notifyBatteryCharge: Bool {
         get {
             return UserDefaults.standard.bool(forKey: "notifyBatteryCharge")
@@ -47,7 +45,7 @@ class AppSettings {
             UserDefaults.standard.set(newValue, forKey: "notifyBatteryCharge")
         }
     }
-    
+
     static var notifyBatteryFull: Bool {
         get {
             return UserDefaults.standard.bool(forKey: "notifyBatteryFull")
@@ -56,18 +54,18 @@ class AppSettings {
             UserDefaults.standard.set(newValue, forKey: "notifyBatteryFull")
         }
     }
-    
+
     static var launchOnLogin: Bool {
         get {
-            guard let loginItems = SMCopyAllJobDictionaries(kSMDomainUserLaunchd).takeRetainedValue() as NSArray as? [[String:AnyObject]] else { return false }
-            return !loginItems.filter {
-                $0["Label"] as! String == helperAppBundleID
-            }.isEmpty
+            return SMAppService.mainApp.status == .enabled
         }
-        set {
-            if (!SMLoginItemSetEnabled(helperAppBundleID as CFString, newValue)) {
-                Swift.print("Launch on Login setting error")
-            }
+    }
+
+    static func setLaunchOnLogin(_ enabled: Bool) throws {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
         }
     }
 }
