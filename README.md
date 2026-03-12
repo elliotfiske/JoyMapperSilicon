@@ -1,4 +1,4 @@
-# JoyMapperSilicon
+# JoyMapperSilicon (Fork)
 Nintendo Joy-Con / Pro Controller Mapper for Apple Silicon (also works on Intel-based macOS Big Sur). It maps gamepad buttons to keyboard / mouse events smoothly and works for games and platforms which haven't yet supported gamepad on M1 Macs, e.g., Witcher 3, CrossOver.
 
 ## Demo on YouTube
