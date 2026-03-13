@@ -87,11 +87,14 @@ extension ViewController: NSTableViewDelegate, NSTableViewDataSource {
         }
 
         let clipboardData = KeyConfigClipboardData(from: keyConfig)
-        guard let data = try? JSONEncoder().encode(clipboardData) else { return }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(clipboardData) else { return }
 
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setData(data, forType: keyConfigPasteboardType)
+        pasteboard.setString(String(data: data, encoding: .utf8) ?? "", forType: .string)
     }
 
     func pasteToSelectedConfig() {

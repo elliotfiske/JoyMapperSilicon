@@ -12,9 +12,21 @@ let keyConfigPasteboardType = NSPasteboard.PasteboardType("com.joymappersilicon.
 struct KeyMapData: Codable {
     let button: String
     let keyCode: Int16
+    let keyName: String?
     let modifiers: Int32
     let mouseButton: Int16
+    let mouseButtonName: String?
     let isEnabled: Bool
+
+    init(from keyMap: KeyMap) {
+        self.button = keyMap.button ?? ""
+        self.keyCode = keyMap.keyCode
+        self.keyName = keyMap.keyCode >= 0 ? getKeyName(keyCode: UInt16(keyMap.keyCode)) : nil
+        self.modifiers = keyMap.modifiers
+        self.mouseButton = keyMap.mouseButton
+        self.mouseButtonName = keyMap.mouseButton >= 0 ? mouseButtonNames[Int(keyMap.mouseButton)] : nil
+        self.isEnabled = keyMap.isEnabled
+    }
 }
 
 struct StickConfigData: Codable {
@@ -32,13 +44,7 @@ struct KeyConfigClipboardData: Codable {
         var maps: [KeyMapData] = []
         keyConfig.keyMaps?.enumerateObjects { (obj, _) in
             guard let keyMap = obj as? KeyMap else { return }
-            maps.append(KeyMapData(
-                button: keyMap.button ?? "",
-                keyCode: keyMap.keyCode,
-                modifiers: keyMap.modifiers,
-                mouseButton: keyMap.mouseButton,
-                isEnabled: keyMap.isEnabled
-            ))
+            maps.append(KeyMapData(from: keyMap))
         }
         self.keyMaps = maps
 
@@ -63,13 +69,7 @@ extension StickConfigData {
         var maps: [KeyMapData] = []
         stickConfig.keyMaps?.enumerateObjects { (obj, _) in
             guard let keyMap = obj as? KeyMap else { return }
-            maps.append(KeyMapData(
-                button: keyMap.button ?? "",
-                keyCode: keyMap.keyCode,
-                modifiers: keyMap.modifiers,
-                mouseButton: keyMap.mouseButton,
-                isEnabled: keyMap.isEnabled
-            ))
+            maps.append(KeyMapData(from: keyMap))
         }
         self.keyMaps = maps
     }
