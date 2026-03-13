@@ -77,6 +77,7 @@ public class ProController: Controller {
         super.readStandardState(value: value)
 
         let ptr = IOHIDValueGetBytePtr(value)
+        let length = IOHIDValueGetLength(value)
         let button1 = (ptr+2).pointee
         let button2 = (ptr+3).pointee
         let button3 = (ptr+4).pointee
