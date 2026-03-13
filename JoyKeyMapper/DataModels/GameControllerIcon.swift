@@ -6,6 +6,7 @@
 //  Copyright © 2020 DarkHorse. All rights reserved.
 //
 
+import AppKit
 import JoyConSwift
 
 let proconBase = NSImage(named: "procon_base")!
