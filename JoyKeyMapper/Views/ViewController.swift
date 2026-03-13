@@ -61,7 +61,8 @@ class ViewController: NSViewController {
         
         self.configTableView.delegate = self
         self.configTableView.dataSource = self
-        
+
+        self.setupAppTableContextMenu()
         self.updateAppAddRemoveButtonState()
 
         NotificationCenter.default.addObserver(self, selector: #selector(controllerAdded), name: .controllerAdded, object: nil)
@@ -190,6 +191,16 @@ class ViewController: NSViewController {
         }
     }
     
+    // MARK: - Copy/Paste
+
+    @objc func copy(_ sender: Any?) {
+        self.copySelectedConfig()
+    }
+
+    @objc func paste(_ sender: Any?) {
+        self.pasteToSelectedConfig()
+    }
+
     // MARK: - Import
     
     @IBAction func importKeyMappings(_ sender: NSButton) {
