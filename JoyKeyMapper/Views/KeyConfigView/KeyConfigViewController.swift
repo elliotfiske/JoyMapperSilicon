@@ -49,9 +49,12 @@ class KeyConfigViewController: NSViewController, NSComboBoxDelegate, KeyConfigCo
         if keyMap.keyCode >= 0 {
             self.keyRadioButton.state = .on
             self.keyAction.stringValue = getKeyName(keyCode: UInt16(keyMap.keyCode))
-        } else {
+        } else if keyMap.mouseButton >= 0 {
             self.mouseRadioButton.state = .on
             self.mouseAction.selectItem(withTag: Int(keyMap.mouseButton))
+        } else {
+            // Modifier-only mapping or unconfigured — default to key radio
+            self.keyRadioButton.state = .on
         }
         self.keyCode = keyMap.keyCode
         self.keyAction.configDelegate = self

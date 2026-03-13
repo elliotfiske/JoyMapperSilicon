@@ -203,12 +203,12 @@ class GameController {
 
             if config.keyCode >= 0 {
                 metaKeyEvent(config: config, keyDown: true)
-                
+
                 if let systemKey = systemDefinedKey[Int(config.keyCode)] {
                     let mousePos = NSEvent.mouseLocation
                     let flags = NSEvent.ModifierFlags(rawValue: 0x0a00)
                     let data1 = Int((systemKey << 16) | 0x0a00)
-                    
+
                     let ev = NSEvent.otherEvent(
                         with: .systemDefined,
                         location: mousePos,
@@ -225,8 +225,11 @@ class GameController {
                     event?.flags = CGEventFlags(rawValue: CGEventFlags.RawValue(config.modifiers))
                     event?.post(tap: .cghidEventTap)
                 }
+            } else if config.mouseButton < 0 && config.modifiers != 0 {
+                // Modifier-only mapping (no key or mouse button)
+                metaKeyEvent(config: config, keyDown: true)
             }
-        
+
             if config.mouseButton >= 0 {
                 let mousePos = NSEvent.mouseLocation
                 let cursorPos = CGPoint(x: mousePos.x, y: NSScreen.screens[0].frame.maxY - mousePos.y)
@@ -264,13 +267,13 @@ class GameController {
     func buttonReleaseHandler(config: KeyMap) {
         DispatchQueue.main.async {
             let source = CGEventSource(stateID: .hidSystemState)
-            
+
             if config.keyCode >= 0 {
                 if let systemKey = systemDefinedKey[Int(config.keyCode)] {
                     let mousePos = NSEvent.mouseLocation
                     let flags = NSEvent.ModifierFlags(rawValue: 0x0b00)
                     let data1 = Int((systemKey << 16) | 0x0b00)
-                    
+
                     let ev = NSEvent.otherEvent(
                         with: .systemDefined,
                         location: mousePos,
@@ -287,7 +290,10 @@ class GameController {
                     event?.flags = CGEventFlags(rawValue: CGEventFlags.RawValue(config.modifiers))
                     event?.post(tap: .cghidEventTap)
                 }
-                    
+
+                metaKeyEvent(config: config, keyDown: false)
+            } else if config.mouseButton < 0 && config.modifiers != 0 {
+                // Modifier-only mapping (no key or mouse button)
                 metaKeyEvent(config: config, keyDown: false)
             }
 
