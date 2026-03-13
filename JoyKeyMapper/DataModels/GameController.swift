@@ -322,9 +322,27 @@ class GameController {
             return
         }
         let mousePos = NSEvent.mouseLocation
-        let newX = min(max(0, mousePos.x + pos.x * speed), NSScreen.screens[0].frame.maxX)
-        let newY = min(max(0, NSScreen.screens[0].frame.maxY - mousePos.y - pos.y * speed), NSScreen.screens[0].frame.maxY)
-        
+        let primaryScreenMaxY = NSScreen.screens[0].frame.maxY
+
+        // Compute the virtual desktop bounds in CG coordinates (origin at top-left of primary screen)
+        var minX = CGFloat.infinity, maxX = -CGFloat.infinity
+        var minY = CGFloat.infinity, maxY = -CGFloat.infinity
+        for screen in NSScreen.screens {
+            let frame = screen.frame
+            // Convert NSScreen frame to CG coordinate space
+            let cgLeft = frame.minX
+            let cgRight = frame.maxX
+            let cgTop = primaryScreenMaxY - frame.maxY
+            let cgBottom = primaryScreenMaxY - frame.minY
+            minX = min(minX, cgLeft)
+            maxX = max(maxX, cgRight)
+            minY = min(minY, cgTop)
+            maxY = max(maxY, cgBottom)
+        }
+
+        let newX = min(max(minX, mousePos.x + pos.x * speed), maxX)
+        let newY = min(max(minY, primaryScreenMaxY - mousePos.y - pos.y * speed), maxY)
+
         let newPos = CGPoint(x: newX, y: newY)
         
         let source = CGEventSource(stateID: .hidSystemState)
