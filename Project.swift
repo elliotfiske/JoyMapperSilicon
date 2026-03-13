@@ -19,7 +19,7 @@ let project = Project(
             destinations: [.mac],
             product: .app,
             bundleId: "com.elliotfiske.JoyMapperSilicon",
-            deploymentTargets: .macOS("11.0"),
+            deploymentTargets: .macOS("26.0"),
             infoPlist: .file(path: "JoyKeyMapper/Info.plist"),
             sources: ["JoyKeyMapper/**/*.swift"],
             resources: .resources(
@@ -72,7 +72,7 @@ let project = Project(
             destinations: [.mac],
             product: .app,
             bundleId: "cn.qibinc.JoyMapperSiliconLauncher",
-            deploymentTargets: .macOS("11.0"),
+            deploymentTargets: .macOS("26.0"),
             infoPlist: .file(path: "JoyKeyMapperLauncher/Info.plist"),
             sources: ["JoyKeyMapperLauncher/**/*.swift"],
             resources: .resources(
@@ -101,7 +101,7 @@ let project = Project(
             destinations: [.mac],
             product: .framework,
             bundleId: "com.elliotfiske.JoyConSwift",
-            deploymentTargets: .macOS("11.0"),
+            deploymentTargets: .macOS("26.0"),
             sources: ["Vendor/JoyConSwift/Sources/**/*.swift"],
             settings: .settings(
                 base: [

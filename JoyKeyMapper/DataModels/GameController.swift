@@ -125,7 +125,7 @@ class GameController {
     
     func setControllerHandler() {
         guard let controller = self.controller else { return }
-        
+
         controller.setPlayerLights(l1: .on, l2: .off, l3: .off, l4: .off)
         controller.enableIMU(enable: true)
         controller.setInputMode(mode: .standardFull)
