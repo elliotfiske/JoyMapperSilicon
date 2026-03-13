@@ -55,7 +55,11 @@ func convertKeyName(keyMap: KeyMap?) -> String {
         }
         return buttonName
     }
-    
+
+    if !modifiers.isEmpty {
+        return modifiers
+    }
+
     return none
 }
 
