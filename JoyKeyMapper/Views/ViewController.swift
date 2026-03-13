@@ -48,22 +48,31 @@ class ViewController: NSViewController {
     }
     var keyDownHandler: Any?
 
+    private var accessibilityBanner: NSView?
+    private var accessibilityCheckTimer: Timer?
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
         if self.controllerCollectionView == nil { return }
-        
+
         self.controllerCollectionView.delegate = self
         self.controllerCollectionView.dataSource = self
-        
+
         self.appTableView.delegate = self
         self.appTableView.dataSource = self
-        
+
         self.configTableView.delegate = self
         self.configTableView.dataSource = self
 
         self.setupAppTableContextMenu()
         self.updateAppAddRemoveButtonState()
+
+        self.setupAccessibilityBanner()
+        self.updateAccessibilityBanner()
+        self.accessibilityCheckTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.updateAccessibilityBanner()
+        }
 
         NotificationCenter.default.addObserver(self, selector: #selector(controllerAdded), name: .controllerAdded, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(controllerRemoved), name: .controllerRemoved, object: nil)
@@ -73,7 +82,86 @@ class ViewController: NSViewController {
     }
     
     override func viewDidDisappear() {
+        self.accessibilityCheckTimer?.invalidate()
+        self.accessibilityCheckTimer = nil
+    }
 
+    // MARK: - Accessibility Banner
+
+    private func setupAccessibilityBanner() {
+        let banner = NSView()
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        banner.wantsLayer = true
+        banner.layer?.backgroundColor = NSColor.systemYellow.withAlphaComponent(0.15).cgColor
+
+        let icon = NSImageView()
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Warning")
+        icon.contentTintColor = .systemYellow
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+
+        let label = NSTextField(wrappingLabelWithString: "Accessibility permission is required for key mapping to work. Grant access in System Settings.")
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        label.textColor = .labelColor
+
+        let requestButton = NSButton(title: "Request Access…", target: self, action: #selector(requestAccessibilityAccess))
+        requestButton.translatesAutoresizingMaskIntoConstraints = false
+        requestButton.bezelStyle = .recessed
+        requestButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        requestButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        let settingsButton = NSButton(title: "Open Settings…", target: self, action: #selector(openAccessibilitySettings))
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
+        settingsButton.bezelStyle = .recessed
+        settingsButton.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        settingsButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        banner.addSubview(icon)
+        banner.addSubview(label)
+        banner.addSubview(requestButton)
+        banner.addSubview(settingsButton)
+
+        self.view.addSubview(banner)
+
+        NSLayoutConstraint.activate([
+            banner.topAnchor.constraint(equalTo: self.view.topAnchor),
+            banner.leadingAnchor.constraint(equalTo: self.view.leadingAnchor),
+            banner.trailingAnchor.constraint(equalTo: self.view.trailingAnchor),
+
+            icon.leadingAnchor.constraint(equalTo: banner.leadingAnchor, constant: 10),
+            icon.centerYAnchor.constraint(equalTo: banner.centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 16),
+            icon.heightAnchor.constraint(equalToConstant: 16),
+
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6),
+            label.centerYAnchor.constraint(equalTo: banner.centerYAnchor),
+            label.topAnchor.constraint(greaterThanOrEqualTo: banner.topAnchor, constant: 6),
+            label.bottomAnchor.constraint(lessThanOrEqualTo: banner.bottomAnchor, constant: -6),
+
+            requestButton.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 8),
+            requestButton.centerYAnchor.constraint(equalTo: banner.centerYAnchor),
+
+            settingsButton.leadingAnchor.constraint(equalTo: requestButton.trailingAnchor, constant: 4),
+            settingsButton.trailingAnchor.constraint(equalTo: banner.trailingAnchor, constant: -10),
+            settingsButton.centerYAnchor.constraint(equalTo: banner.centerYAnchor),
+        ])
+
+        self.accessibilityBanner = banner
+    }
+
+    private func updateAccessibilityBanner() {
+        let trusted = AXIsProcessTrusted()
+        self.accessibilityBanner?.isHidden = trusted
+    }
+
+    @objc private func requestAccessibilityAccess() {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
+        AXIsProcessTrustedWithOptions(options)
+    }
+
+    @objc private func openAccessibilitySettings() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
     }
 
     override var representedObject: Any? {
