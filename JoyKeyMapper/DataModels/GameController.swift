@@ -56,6 +56,22 @@ class GameController {
             self.updateControllerIcon()
         }
     }
+
+    enum ConnectionDisplayState {
+        case disconnected
+        case connecting
+        case connected
+        case error
+    }
+
+    var connectionState: ConnectionDisplayState = .disconnected {
+        didSet {
+            if connectionState != oldValue {
+                self.updateControllerIcon()
+            }
+        }
+    }
+
     var isLeftDragging: Bool = false
     var isRightDragging: Bool = false
     var isCenterDragging: Bool = false

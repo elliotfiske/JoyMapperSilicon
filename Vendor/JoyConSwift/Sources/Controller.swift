@@ -123,6 +123,10 @@ public class Controller {
         }
     }
     private var emptyCount: Int = 0
+    /// Consecutive HID input error count; reset on each successful handleInput
+    var consecutiveErrorCount: Int = 0
+    /// Callback for communicating fatal errors to the manager
+    var errorHandler: ((_ error: ConnectionError) -> Void)?
     /// true if the controller is being charged
     public internal(set) var isCharging: Bool {
         didSet {
@@ -189,9 +193,17 @@ public class Controller {
         }
     }
     
-    func handleError(result: Int32, value: IOHIDValue) {}
+    func handleError(result: Int32, value: IOHIDValue) {
+        self.consecutiveErrorCount += 1
+        NSLog("Controller %@ HID error: %d (consecutive: %d)", self.serialID, result, self.consecutiveErrorCount)
+
+        if self.consecutiveErrorCount == 11 {
+            self.errorHandler?(.communicationFailure)
+        }
+    }
 
     func handleInput(value: IOHIDValue) {
+        self.consecutiveErrorCount = 0
         let element = IOHIDValueGetElement(value)
         let reportID = IOHIDElementGetReportID(element)
         

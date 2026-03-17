@@ -109,7 +109,21 @@ class AppNotifications {
         let request = UNNotificationRequest(identifier: "test", content: content, trigger: nil)
         self.notify(request: request)
     }
-    
+
+    static func notifyControllerConnectionFailed(_ controllerName: String) {
+        guard AppSettings.notifyConnection else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = NSLocalizedString("Connection failed", comment: "Connection failed notification title")
+        content.body = String.localizedStringWithFormat(
+            NSLocalizedString("Could not connect to %@. Try turning the controller off and on.", comment: "Connection failed notification body"),
+            controllerName
+        )
+        content.categoryIdentifier = "info"
+        let request = UNNotificationRequest(identifier: "controllerConnectionFailed", content: content, trigger: nil)
+        self.notify(request: request)
+    }
+
     static private func notify(request: UNNotificationRequest) {
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { settings in

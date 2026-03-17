@@ -86,6 +86,57 @@ private func drawStopIcon() {
     stop.draw(in: iconRect)
 }
 
+private func drawConnectingOverlay(in iconRect: NSRect) {
+    // Draw a pulsing/spinning indicator — simple approach: semi-transparent blue circle
+    let size: CGFloat = 16
+    let origin = CGPoint(x: iconRect.width - size - 2, y: 2)
+    let rect = NSRect(origin: origin, size: NSSize(width: size, height: size))
+    let path = NSBezierPath(ovalIn: rect)
+    NSColor.systemBlue.withAlphaComponent(0.7).setFill()
+    path.fill()
+
+    // Draw a small "..." or spinner indicator inside
+    let dotSize: CGFloat = 2.5
+    let centerY = origin.y + size / 2
+    for i in 0..<3 {
+        let dotX = origin.x + 3 + CGFloat(i) * 4
+        let dotRect = NSRect(x: dotX, y: centerY - dotSize / 2, width: dotSize, height: dotSize)
+        let dot = NSBezierPath(ovalIn: dotRect)
+        NSColor.white.setFill()
+        dot.fill()
+    }
+}
+
+private func drawErrorOverlay(in iconRect: NSRect) {
+    // Draw a yellow warning triangle badge
+    let size: CGFloat = 18
+    let origin = CGPoint(x: iconRect.width - size - 2, y: 2)
+
+    let path = NSBezierPath()
+    path.move(to: NSPoint(x: origin.x + size / 2, y: origin.y + size))
+    path.line(to: NSPoint(x: origin.x, y: origin.y))
+    path.line(to: NSPoint(x: origin.x + size, y: origin.y))
+    path.close()
+
+    NSColor.systemYellow.setFill()
+    path.fill()
+    NSColor.black.setStroke()
+    path.lineWidth = 1.0
+    path.stroke()
+
+    // Draw "!" inside
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.alignment = .center
+    let attrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.boldSystemFont(ofSize: 11),
+        .foregroundColor: NSColor.black,
+        .paragraphStyle: paragraphStyle,
+    ]
+    let bang = "!" as NSString
+    let textRect = NSRect(x: origin.x, y: origin.y - 1, width: size, height: size)
+    bang.draw(in: textRect, withAttributes: attrs)
+}
+
 private func createProConIcon(for controller: GameController) -> NSImage {
     guard
         let leftGripColor = controller.leftGripColor,
@@ -124,6 +175,14 @@ private func createProConIcon(for controller: GameController) -> NSImage {
     if !controller.isEnabled {
         drawStopIcon()
     }
+    switch controller.connectionState {
+    case .connecting:
+        drawConnectingOverlay(in: iconRect)
+    case .error:
+        drawErrorOverlay(in: iconRect)
+    default:
+        break
+    }
     icon.unlockFocus()
 
     return icon
@@ -152,6 +211,14 @@ private func createJoyConLIcon(for controller: GameController) -> NSImage {
     if !controller.isEnabled {
         drawStopIcon()
     }
+    switch controller.connectionState {
+    case .connecting:
+        drawConnectingOverlay(in: iconRect)
+    case .error:
+        drawErrorOverlay(in: iconRect)
+    default:
+        break
+    }
     icon.unlockFocus()
 
     return icon
@@ -179,6 +246,14 @@ private func createJoyConRIcon(for controller: GameController) -> NSImage {
     drawBatteryIcon(for: controller)
     if !controller.isEnabled {
         drawStopIcon()
+    }
+    switch controller.connectionState {
+    case .connecting:
+        drawConnectingOverlay(in: iconRect)
+    case .error:
+        drawErrorOverlay(in: iconRect)
+    default:
+        break
     }
     icon.unlockFocus()
 

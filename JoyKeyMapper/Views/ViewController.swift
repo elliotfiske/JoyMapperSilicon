@@ -70,6 +70,8 @@ class ViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(controllerConnected), name: .controllerConnected, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(controllerDisconnected), name: .controllerDisconnected, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(controllerIconChanged), name: .controllerIconChanged, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(controllerConnecting), name: .controllerConnecting, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(controllerConnectionFailed), name: .controllerConnectionFailed, object: nil)
     }
     
     override func viewDidDisappear() {
@@ -185,12 +187,24 @@ class ViewController: NSViewController {
     
     @objc func controllerIconChanged(_ notification: NSNotification) {
         guard let gameController = notification.object as? GameController else { return }
-        
+
         DispatchQueue.main.async { [weak self] in
             self?.controllerCollectionView.reloadData()
         }
     }
-    
+
+    @objc func controllerConnecting() {
+        DispatchQueue.main.async { [weak self] in
+            self?.controllerCollectionView.reloadData()
+        }
+    }
+
+    @objc func controllerConnectionFailed() {
+        DispatchQueue.main.async { [weak self] in
+            self?.controllerCollectionView.reloadData()
+        }
+    }
+
     // MARK: - Copy/Paste
 
     @objc func copy(_ sender: Any?) {
