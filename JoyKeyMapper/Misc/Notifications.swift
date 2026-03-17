@@ -14,4 +14,6 @@ public extension Notification.Name {
     static let controllerDisconnected = Notification.Name("ControllerDisconnected")
     static let controllerRemoved = Notification.Name("ControllerRemoved")
     static let controllerIconChanged = Notification.Name("ControllerIconChanged")
+    static let controllerConnecting = Notification.Name("ControllerConnecting")
+    static let controllerConnectionFailed = Notification.Name("ControllerConnectionFailed")
 }

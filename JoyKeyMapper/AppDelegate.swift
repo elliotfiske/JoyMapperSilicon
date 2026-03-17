@@ -9,6 +9,7 @@
 import AppKit
 import UserNotifications
 import JoyConSwift
+import IOKit.hid
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNotificationCenterDelegate {
@@ -41,7 +42,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
         self.manager.disconnectHandler = { [weak self] controller in
             self?.disconnectController(controller)
         }
-        
+        self.manager.connectionStateHandler = { [weak self] device, state in
+            self?.handleConnectionState(device: device, state: state)
+        }
+
         self.dataManager = DataManager() { [weak self] manager in
             guard let strongSelf = self else { return }
             guard let dataManager = manager else { return }
@@ -175,6 +179,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
             $0.data.serialID == controller.serialID
         }) {
             gameController.controller = controller
+            gameController.connectionState = .connected
             gameController.startTimer()
             NotificationCenter.default.post(name: .controllerConnected, object: gameController)
 
@@ -198,6 +203,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
             $0.data.serialID == controller.serialID
         }) {
             gameController.controller = nil
+            gameController.connectionState = .disconnected
             gameController.updateControllerIcon()
             NotificationCenter.default.post(name: .controllerDisconnected, object: gameController)
             
@@ -206,11 +212,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
         self.updateControllersMenu()
     }
 
+    func handleConnectionState(device: IOHIDDevice, state: ConnectionState) {
+        let serialID = IOHIDDeviceGetProperty(device, kIOHIDSerialNumberKey as CFString) as? String ?? ""
+        let deviceName: String
+        if !serialID.isEmpty {
+            deviceName = serialID
+        } else {
+            let vendorID = IOHIDDeviceGetProperty(device, kIOHIDVendorIDKey as CFString) as? Int ?? 0
+            let productID = IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? Int ?? 0
+            deviceName = String(format: "Device %04X:%04X", vendorID, productID)
+        }
+
+        switch state {
+        case .matching, .initializing:
+            DispatchQueue.main.async {
+                if let gameController = self.controllers.first(where: { $0.data.serialID == serialID && !serialID.isEmpty }) {
+                    gameController.connectionState = .connecting
+                }
+                NotificationCenter.default.post(name: .controllerConnecting, object: nil)
+            }
+        case .connected:
+            // Handled by existing connectHandler flow
+            break
+        case .error(let error):
+            NSLog("Connection error for %@: %@", deviceName, String(describing: error))
+            DispatchQueue.main.async {
+                if let gameController = self.controllers.first(where: { $0.data.serialID == serialID && !serialID.isEmpty }) {
+                    gameController.connectionState = .error
+                }
+                NotificationCenter.default.post(name: .controllerConnectionFailed, object: nil)
+            }
+            AppNotifications.notifyControllerConnectionFailed(deviceName)
+        }
+    }
+
     func addController(_ controller: JoyConSwift.Controller) {
         guard let dataManager = self.dataManager else { return }
         let controllerData = dataManager.getControllerData(controller: controller)
         let gameController = GameController(data: controllerData)
         gameController.controller = controller
+        gameController.connectionState = .connected
         gameController.startTimer()
         self.controllers.append(gameController)
         
