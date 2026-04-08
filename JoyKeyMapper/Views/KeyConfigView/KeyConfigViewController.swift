@@ -13,7 +13,7 @@ protocol KeyConfigSetDelegate {
     func setKeyConfig(controller: KeyConfigViewController)
 }
 
-class KeyConfigViewController: NSViewController, NSComboBoxDelegate, KeyConfigComboBoxDelegate {
+class KeyConfigViewController: NSViewController, NSComboBoxDelegate {
     var delegate: KeyConfigSetDelegate?
     var keyMap: KeyMap?
     var keyCode: Int16 = -1
@@ -54,7 +54,6 @@ class KeyConfigViewController: NSViewController, NSComboBoxDelegate, KeyConfigCo
             self.mouseAction.selectItem(withTag: Int(keyMap.mouseButton))
         }
         self.keyCode = keyMap.keyCode
-        self.keyAction.configDelegate = self
         self.keyAction.delegate = self
     }
     
@@ -105,10 +104,14 @@ class KeyConfigViewController: NSViewController, NSComboBoxDelegate, KeyConfigCo
     
     func comboBoxSelectionDidChange(_ notification: Notification) {
         let index = self.keyAction.indexOfSelectedItem
-        if index >= 0 {
-            let keyCode = keyCodeList[index]
-            self.setKeyCode(UInt16(keyCode))
+        if let keyCode = self.keyAction.keyCode(forItemAt: index) {
+            self.setKeyCode(keyCode)
         }
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard let comboBox = obj.object as? KeyConfigComboBox else { return }
+        comboBox.filterItems(matching: comboBox.stringValue)
     }
     
     func setKeyCode(_ keyCode: UInt16) {
