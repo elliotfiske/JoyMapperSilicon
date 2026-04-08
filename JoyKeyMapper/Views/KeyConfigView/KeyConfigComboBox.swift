@@ -9,10 +9,6 @@
 import AppKit
 import InputMethodKit
 
-protocol KeyConfigComboBoxDelegate {
-    func setKeyCode(_ keyCode: UInt16)
-}
-
 let keyCodeList: [Int] = [
     kVK_ISO_Section,
     kVK_Return,
@@ -22,7 +18,6 @@ let keyCodeList: [Int] = [
     kVK_Escape,
     kVK_Function,
     // kVK_CapsLock,
-    kVK_Function,
     kVK_RightShift,
     kVK_RightOption,
     kVK_RightControl,
@@ -140,40 +135,54 @@ let keyCodeList: [Int] = [
     kVK_ANSI_Grave,
 ]
 
-let keyCells: [NSComboBoxCell] = {
-    return keyCodeList.map {
-        let keyName = getKeyName(keyCode: UInt16($0))
-        return NSComboBoxCell(textCell: keyName)
+private let allKeyItems: [(keyCode: Int, keyName: String)] = {
+    var seen = Set<String>()
+    return keyCodeList.compactMap { code in
+        let name = getKeyName(keyCode: UInt16(code))
+        guard !name.isEmpty, !seen.contains(name) else { return nil }
+        seen.insert(name)
+        return (keyCode: code, keyName: name)
     }
 }()
 
-class KeyConfigComboBox: NSComboBox {
-    var configDelegate: KeyConfigComboBoxDelegate?
-    
-    var monitor: Any?
-    
+class KeyConfigComboBox: NSComboBox, NSComboBoxDataSource {
+    private var filteredItems: [(keyCode: Int, keyName: String)] = allKeyItems
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
     }
-    
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)        
-        self.addItems(withObjectValues: keyCells)
-    }
-    
-    override func becomeFirstResponder() -> Bool {
-        self.stringValue = ""
-        self.monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: { [weak self] event in
-            guard let _self = self else { return event }
 
-            _self.window?.makeFirstResponder(nil)
-            _self.configDelegate?.setKeyCode(event.keyCode)
-            if let monitor = _self.monitor {
-                _self.monitor = nil
-                NSEvent.removeMonitor(monitor)
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        self.usesDataSource = true
+        self.dataSource = self
+        self.completes = false
+    }
+
+    func filterItems(matching query: String) {
+        if query.isEmpty {
+            filteredItems = allKeyItems
+        } else {
+            filteredItems = allKeyItems.filter {
+                $0.keyName.localizedCaseInsensitiveContains(query)
             }
-            return nil
-        })
-        return true
+        }
+        reloadData()
+    }
+
+    func keyCode(forItemAt index: Int) -> UInt16? {
+        guard index >= 0 && index < filteredItems.count else { return nil }
+        return UInt16(filteredItems[index].keyCode)
+    }
+
+    // MARK: - NSComboBoxDataSource
+
+    func numberOfItems(in comboBox: NSComboBox) -> Int {
+        return filteredItems.count
+    }
+
+    func comboBox(_ comboBox: NSComboBox, objectValueForItemAt index: Int) -> Any? {
+        guard index >= 0 && index < filteredItems.count else { return nil }
+        return filteredItems[index].keyName
     }
 }
