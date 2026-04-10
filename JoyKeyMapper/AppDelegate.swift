@@ -178,6 +178,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
         if let gameController = self.controllers.first(where: {
             $0.data.serialID == controller.serialID
         }) {
+            gameController.lastConnectionError = nil
             gameController.controller = controller
             gameController.connectionState = .connected
             gameController.startTimer()
@@ -238,6 +239,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
             NSLog("Connection error for %@: %@", deviceName, String(describing: error))
             DispatchQueue.main.async {
                 if let gameController = self.controllers.first(where: { $0.data.serialID == serialID && !serialID.isEmpty }) {
+                    gameController.lastConnectionError = error
                     gameController.connectionState = .error
                 }
                 NotificationCenter.default.post(name: .controllerConnectionFailed, object: nil)
@@ -250,6 +252,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
         guard let dataManager = self.dataManager else { return }
         let controllerData = dataManager.getControllerData(controller: controller)
         let gameController = GameController(data: controllerData)
+        gameController.lastConnectionError = nil
         gameController.controller = controller
         gameController.connectionState = .connected
         gameController.startTimer()
