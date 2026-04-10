@@ -9,6 +9,7 @@ class ConnectionLog {
     static let shared = ConnectionLog()
 
     private var entries: [String] = []
+    private let queue = DispatchQueue(label: "com.joymapper.connectionlog")
     private let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss.SSS"
@@ -29,11 +30,15 @@ class ConnectionLog {
             deviceTag = ""
         }
         let entry = "[\(timestamp)]\(deviceTag) \(message)"
-        entries.append(entry)
-        NotificationCenter.default.post(name: .connectionLogUpdated, object: entry)
+        queue.async {
+            self.entries.append(entry)
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .connectionLogUpdated, object: entry)
+            }
+        }
     }
 
     func copyAll() -> String {
-        return entries.joined(separator: "\n")
+        return queue.sync { entries.joined(separator: "\n") }
     }
 }

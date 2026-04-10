@@ -71,6 +71,8 @@ class ConnectionLogPanelView: NSView {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isRichText = false
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
 
         scrollView.documentView = textView
         addSubview(scrollView)

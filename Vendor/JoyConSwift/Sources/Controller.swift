@@ -202,6 +202,7 @@ public class Controller {
         NSLog("Controller %@ HID error: %d (consecutive: %d)", self.serialID, result, self.consecutiveErrorCount)
 
         if self.consecutiveErrorCount == 11 {
+            self.logHandler?("Communication error: consecutive HID failures", self.serialID)
             self.errorHandler?(.communicationFailure)
         }
     }

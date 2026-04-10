@@ -193,6 +193,9 @@ class ViewController: NSViewController {
 
         window.contentView = splitView
 
+        // Force layout so bounds are correct before setting divider position
+        splitView.layoutSubtreeIfNeeded()
+
         // Set the log panel to its collapsed height (just the header bar)
         splitView.setPosition(splitView.bounds.height - 28, ofDividerAt: 0)
 
