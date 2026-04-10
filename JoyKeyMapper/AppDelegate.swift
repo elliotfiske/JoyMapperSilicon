@@ -46,6 +46,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
             self?.handleConnectionState(device: device, state: state)
         }
 
+        self.manager.logHandler = { message, deviceSerial in
+            ConnectionLog.shared.log(message, device: deviceSerial)
+        }
+
         self.dataManager = DataManager() { [weak self] manager in
             guard let strongSelf = self else { return }
             guard let dataManager = manager else { return }
@@ -178,6 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
         if let gameController = self.controllers.first(where: {
             $0.data.serialID == controller.serialID
         }) {
+            ConnectionLog.shared.log("Controller reconnected: \(gameController.type.rawValue)", device: controller.serialID)
             gameController.lastConnectionError = nil
             gameController.controller = controller
             gameController.connectionState = .connected
@@ -186,6 +191,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
 
             AppNotifications.notifyControllerConnected(gameController)
         } else {
+            ConnectionLog.shared.log("New controller discovered", device: controller.serialID)
             self.addController(controller)
         }
         self.updateControllersMenu()
@@ -203,11 +209,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
         if let gameController = self.controllers.first(where: {
             $0.data.serialID == controller.serialID
         }) {
+            ConnectionLog.shared.log("Controller disconnected", device: controller.serialID)
             gameController.controller = nil
             gameController.connectionState = .disconnected
             gameController.updateControllerIcon()
             NotificationCenter.default.post(name: .controllerDisconnected, object: gameController)
-            
+
             AppNotifications.notifyControllerDisconnected(gameController)
         }
         self.updateControllersMenu()
@@ -223,6 +230,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, UNUserNoti
             let productID = IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? Int ?? 0
             deviceName = String(format: "Device %04X:%04X", vendorID, productID)
         }
+
+        ConnectionLog.shared.log("State: \(String(describing: state))", device: serialID.isEmpty ? nil : serialID)
 
         switch state {
         case .matching, .initializing:
