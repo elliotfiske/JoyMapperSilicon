@@ -72,6 +72,35 @@ class GameController {
         }
     }
 
+    var lastConnectionError: ConnectionError? = nil
+
+    var statusText: String {
+        switch connectionState {
+        case .disconnected:
+            return ""
+        case .connecting:
+            return NSLocalizedString("Connecting…", comment: "Controller connecting status")
+        case .connected:
+            return NSLocalizedString("Connected", comment: "Controller connected status")
+        case .error:
+            guard let error = lastConnectionError else {
+                return NSLocalizedString("Error", comment: "Controller error status")
+            }
+            switch error {
+            case .typeQueryFailed(let retryCount):
+                return "Error: type query failed (retry \(retryCount))"
+            case .typeQueryTimeout:
+                return "Error: type query timeout"
+            case .initializationTimeout:
+                return "Error: initialization timeout"
+            case .reseizeFailed:
+                return "Error: reseize failed"
+            case .communicationFailure:
+                return "Error: communication failure"
+            }
+        }
+    }
+
     var isLeftDragging: Bool = false
     var isRightDragging: Bool = false
     var isCenterDragging: Bool = false

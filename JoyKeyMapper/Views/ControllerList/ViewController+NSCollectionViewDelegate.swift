@@ -8,8 +8,6 @@
 
 import AppKit
 
-let connected = NSLocalizedString("Connected", comment: "Connected")
-
 extension ViewController: NSCollectionViewDelegate, NSCollectionViewDataSource {
     func collectionView(_ collectionView: NSCollectionView, numberOfItemsInSection section: Int) -> Int {
         let controllers = self.appDelegate?.controllers ?? []
@@ -28,7 +26,7 @@ extension ViewController: NSCollectionViewDelegate, NSCollectionViewDataSource {
 
         controllerItem.iconView.image = controller.icon
         controllerItem.controller = controller
-        controllerItem.label.stringValue = controller.controller != nil ? connected : ""
+        controllerItem.label.stringValue = controller.statusText
         
         return controllerItem
     }
