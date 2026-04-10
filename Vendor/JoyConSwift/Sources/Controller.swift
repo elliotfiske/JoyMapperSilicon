@@ -127,6 +127,8 @@ public class Controller {
     var consecutiveErrorCount: Int = 0
     /// Callback for communicating fatal errors to the manager
     var errorHandler: ((_ error: ConnectionError) -> Void)?
+    /// Callback for debug log messages
+    var logHandler: ((_ message: String, _ deviceSerial: String?) -> Void)?
     /// true if the controller is being charged
     public internal(set) var isCharging: Bool {
         didSet {
@@ -186,7 +188,9 @@ public class Controller {
     }
     
     func readInitializeData(_ done: @escaping () -> Void) {
+        self.logHandler?("Reading controller color...", self.serialID)
         self.readControllerColor {
+            self.logHandler?("Reading calibration...", self.serialID)
             self.readCalibration()
             // TODO: Call done() after readCalibration() is done
             done()
@@ -198,6 +202,7 @@ public class Controller {
         NSLog("Controller %@ HID error: %d (consecutive: %d)", self.serialID, result, self.consecutiveErrorCount)
 
         if self.consecutiveErrorCount == 11 {
+            self.logHandler?("Communication error: consecutive HID failures", self.serialID)
             self.errorHandler?(.communicationFailure)
         }
     }

@@ -50,6 +50,7 @@ class ViewController: NSViewController {
 
     private var accessibilityBanner: NSView?
     private var accessibilityCheckTimer: Timer?
+    private var connectionLogPanel: ConnectionLogPanelView?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -82,7 +83,14 @@ class ViewController: NSViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(controllerConnecting), name: .controllerConnecting, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(controllerConnectionFailed), name: .controllerConnectionFailed, object: nil)
     }
-    
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        if connectionLogPanel == nil {
+            setupConnectionLogPanel()
+        }
+    }
+
     override func viewDidDisappear() {
         self.accessibilityCheckTimer?.invalidate()
         self.accessibilityCheckTimer = nil
@@ -164,6 +172,36 @@ class ViewController: NSViewController {
 
     @objc private func openAccessibilitySettings() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    }
+
+    private func setupConnectionLogPanel() {
+        guard let window = self.view.window else { return }
+        guard let contentView = window.contentView else { return }
+
+        // Replace window.contentView with an NSSplitView.
+        // The old contentView becomes the top pane; the log panel is the bottom pane.
+        let splitView = NSSplitView()
+        splitView.isVertical = false  // horizontal split (top/bottom)
+        splitView.dividerStyle = .thin
+
+        let oldContentView = contentView
+        let logPanel = ConnectionLogPanelView()
+        self.connectionLogPanel = logPanel
+
+        splitView.addArrangedSubview(oldContentView)
+        splitView.addArrangedSubview(logPanel)
+
+        window.contentView = splitView
+
+        // Force layout so bounds are correct before setting divider position
+        splitView.layoutSubtreeIfNeeded()
+
+        // Set the log panel to its collapsed height (just the header bar)
+        splitView.setPosition(splitView.bounds.height - 28, ofDividerAt: 0)
+
+        // Set holding priorities so the log panel stays small and the main content resizes
+        splitView.setHoldingPriority(.defaultLow, forSubviewAt: 1)
+        splitView.setHoldingPriority(.defaultHigh, forSubviewAt: 0)
     }
 
     override var representedObject: Any? {

@@ -64,6 +64,9 @@ public class JoyConManager {
     /// Handler for connection state changes (matching, initializing, connected, error)
     public var connectionStateHandler: ((_ device: IOHIDDevice, _ state: ConnectionState) -> Void)? = nil
 
+    /// Handler for debug log messages
+    public var logHandler: ((_ message: String, _ deviceSerial: String?) -> Void)? = nil
+
     /// Internal state for devices in the matching phase
     private struct MatchingState {
         var retryCount: Int = 0
@@ -73,7 +76,11 @@ public class JoyConManager {
 
     /// Initialize a manager
     public init() {}
-    
+
+    private func serialID(for device: IOHIDDevice) -> String? {
+        return IOHIDDeviceGetProperty(device, kIOHIDSerialNumberKey as CFString) as? String
+    }
+
     let handleMatchCallback: IOHIDDeviceCallback = { (context, result, sender, device) in
         let manager: JoyConManager = unsafeBitCast(context, to: JoyConManager.self)
         manager.handleMatch(result: result, sender: sender, device: device)
@@ -98,6 +105,8 @@ public class JoyConManager {
         }
 
         self.matchingControllers[device] = MatchingState()
+        let serial = self.serialID(for: device)
+        self.logHandler?("Device matched (HID game pad detected)", serial)
         self.connectionStateHandler?(device, .matching)
         self.sendTypeQueryWithTimeout(device: device)
     }
@@ -134,17 +143,26 @@ public class JoyConManager {
         default:
             break
         }
-        
+
+        if let ctrl = _controller {
+            self.logHandler?("Controller type identified: \(ctrl.type.rawValue)", ctrl.serialID)
+        } else {
+            self.logHandler?("Unknown controller type byte: 0x\(String(format: "%02X", data[0]))", self.serialID(for: device))
+        }
+
         guard let controller = _controller else { return }
         self.matchingControllers[device]?.timer?.invalidate()
         self.matchingControllers.removeValue(forKey: device)
         self.controllers[device] = controller
+        controller.logHandler = self.logHandler
         controller.errorHandler = { [weak self] error in
             self?.connectionStateHandler?(device, .error(error))
         }
         controller.isConnected = true
         self.connectionStateHandler?(device, .initializing)
+        self.logHandler?("Initializing controller...", controller.serialID)
         controller.readInitializeData { [weak self] in
+            self?.logHandler?("Initialization complete", controller.serialID)
             self?.connectionStateHandler?(device, .connected)
             self?.connectHandler?(controller)
         }
@@ -169,12 +187,14 @@ public class JoyConManager {
     
     func handleRemove(result: IOReturn, sender: UnsafeMutableRawPointer?, device: IOHIDDevice) {
         if self.matchingControllers[device] != nil {
+            self.logHandler?("Matching device removed before identification", self.serialID(for: device))
             self.matchingControllers[device]?.timer?.invalidate()
             self.matchingControllers.removeValue(forKey: device)
             return
         }
 
         guard let controller = self.controllers[device] else { return }
+        self.logHandler?("Device removed", controller.serialID)
         controller.isConnected = false
         
         self.controllers.removeValue(forKey: device)
@@ -184,11 +204,13 @@ public class JoyConManager {
     }
     
     private func sendTypeQueryWithTimeout(device: IOHIDDevice) {
+        self.logHandler?("Sending type query...", self.serialID(for: device))
         let result = IOHIDDeviceSetReport(device, kIOHIDReportTypeOutput, CFIndex(0x01), controllerTypeOutputReport, controllerTypeOutputReport.count)
         if result != kIOReturnSuccess {
             let retryCount = self.matchingControllers[device]?.retryCount ?? 0
             self.connectionStateHandler?(device, .error(.typeQueryFailed(retryCount: retryCount)))
             NSLog("IOHIDDeviceSetReport error: %d (retry %d)", result, retryCount)
+            self.logHandler?("Type query send failed (IOReturn: \(result))", self.serialID(for: device))
         }
         self.scheduleMatchingTimeout(for: device)
     }
@@ -209,6 +231,7 @@ public class JoyConManager {
 
         state.retryCount += 1
         let maxRetries = 3
+        self.logHandler?("Type query timeout (attempt \(state.retryCount)/\(maxRetries), reseized: \(state.hasReseized))", self.serialID(for: device))
 
         if !state.hasReseized && state.retryCount >= maxRetries {
             // First round of retries exhausted — attempt force re-seize
@@ -217,6 +240,7 @@ public class JoyConManager {
             state.retryCount = 0
             self.matchingControllers[device] = state
 
+            self.logHandler?("Attempting re-seize...", self.serialID(for: device))
             IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
 
             // Schedule re-open after 500ms on the HID RunLoop
@@ -224,6 +248,7 @@ public class JoyConManager {
                 let reopenResult = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
                 if reopenResult != kIOReturnSuccess {
                     NSLog("Re-seize failed with error: %d", reopenResult)
+                    self?.logHandler?("Re-seize failed (IOReturn: \(reopenResult))", self?.serialID(for: device))
                     self?.matchingControllers[device]?.timer?.invalidate()
                     self?.matchingControllers.removeValue(forKey: device)
                     self?.connectionStateHandler?(device, .error(.reseizeFailed))
@@ -240,6 +265,7 @@ public class JoyConManager {
             // Exhausted all attempts after re-seize
             self.matchingControllers[device]?.timer?.invalidate()
             self.matchingControllers.removeValue(forKey: device)
+            self.logHandler?("All retry attempts exhausted after re-seize", self.serialID(for: device))
             self.connectionStateHandler?(device, .error(.reseizeFailed))
             NSLog("Controller matching exhausted all retry attempts after re-seize")
             return
@@ -312,9 +338,11 @@ public class JoyConManager {
         let ret = IOHIDManagerOpen(self.manager, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
         if (ret != kIOReturnSuccess) {
             print("Failed to open HID manager")
+            self.logHandler?("Failed to open HID manager (IOReturn: \(ret))", nil)
             return ret
         }
-        
+
+        self.logHandler?("HID manager opened, scanning for devices", nil)
         self.registerDeviceCallback()
 
         self.runLoop?.run()
