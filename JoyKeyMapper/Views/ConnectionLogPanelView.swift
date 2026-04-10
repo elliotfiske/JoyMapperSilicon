@@ -104,6 +104,17 @@ class ConnectionLogPanelView: NSView {
     }
 
     private func observeLog() {
+        // Load any entries that were logged before this view was created
+        let existing = ConnectionLog.shared.allEntries()
+        if !existing.isEmpty {
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular),
+                .foregroundColor: NSColor(white: 0.9, alpha: 1.0)
+            ]
+            let text = existing.joined(separator: "\n")
+            textView.textStorage?.append(NSAttributedString(string: text, attributes: attrs))
+        }
+
         NotificationCenter.default.addObserver(self, selector: #selector(logUpdated(_:)), name: .connectionLogUpdated, object: nil)
     }
 

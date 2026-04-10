@@ -38,6 +38,10 @@ class ConnectionLog {
         }
     }
 
+    func allEntries() -> [String] {
+        return queue.sync { entries }
+    }
+
     func copyAll() -> String {
         return queue.sync { entries.joined(separator: "\n") }
     }
