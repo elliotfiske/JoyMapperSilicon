@@ -2,13 +2,16 @@
 import SwiftUI
 
 struct KeyMapListView: View {
-    var keyConfig: KeyConfig?
+    @Binding var keyConfig: KeyConfig
+    var isEmpty: Bool
+
+    @State private var editingIndex: Int?
 
     var body: some View {
         List {
-            if let keyConfig {
+            if !isEmpty {
                 Section("Buttons") {
-                    ForEach(keyConfig.keyMaps) { keyMap in
+                    ForEach(Array(keyConfig.keyMaps.enumerated()), id: \.element.id) { index, keyMap in
                         HStack {
                             Text(keyMap.button)
                             Spacer()
@@ -22,25 +25,40 @@ struct KeyMapListView: View {
                                 Text("Not set")
                                     .foregroundStyle(.tertiary)
                             }
+                            Toggle("", isOn: $keyConfig.keyMaps[index].isEnabled)
+                                .labelsHidden()
                         }
+                        .contentShape(Rectangle())
+                        .onTapGesture { editingIndex = index }
                     }
                 }
 
-                if let leftStick = keyConfig.leftStick {
-                    Section("Left Stick") {
-                        Text("Type: \(leftStick.type.rawValue)")
-                    }
+                if keyConfig.leftStick != nil {
+                    StickConfigView(
+                        stickConfig: Binding(
+                            get: { keyConfig.leftStick ?? .defaultConfig() },
+                            set: { keyConfig.leftStick = $0 }
+                        ),
+                        label: "Left Stick"
+                    )
                 }
 
-                if let rightStick = keyConfig.rightStick {
-                    Section("Right Stick") {
-                        Text("Type: \(rightStick.type.rawValue)")
-                    }
+                if keyConfig.rightStick != nil {
+                    StickConfigView(
+                        stickConfig: Binding(
+                            get: { keyConfig.rightStick ?? .defaultConfig() },
+                            set: { keyConfig.rightStick = $0 }
+                        ),
+                        label: "Right Stick"
+                    )
                 }
             } else {
                 Text("Select a controller and app config")
                     .foregroundStyle(.secondary)
             }
+        }
+        .sheet(item: $editingIndex) { index in
+            KeyConfigEditor(keyMap: $keyConfig.keyMaps[index])
         }
     }
 }

@@ -1,5 +1,6 @@
 // JoyMapperSiliconV2/Views/ContentView.swift
 import SwiftUI
+import Sharing
 
 struct ContentView: View {
     @Environment(AppModel.self) private var appModel
@@ -7,17 +8,33 @@ struct ContentView: View {
     @State private var selectedControllerID: String?
     @State private var selectedAppConfigID: UUID?
 
-    private var selectedProfile: ControllerProfile? {
-        appModel.controllerProfiles.first { $0.id == selectedControllerID }
+    private var profileIndex: Int? {
+        appModel.controllerProfiles.firstIndex { $0.id == selectedControllerID }
     }
 
-    private var selectedKeyConfig: KeyConfig? {
-        guard let profile = selectedProfile else { return nil }
+    private var keyConfigBinding: Binding<KeyConfig>? {
+        guard let pIdx = profileIndex else { return nil }
+
         if let appConfigID = selectedAppConfigID,
-           let appConfig = profile.appConfigs.first(where: { $0.id == appConfigID }) {
-            return appConfig.keyConfig
+           let aIdx = appModel.controllerProfiles[pIdx].appConfigs.firstIndex(where: { $0.id == appConfigID }) {
+            return Binding(
+                get: { appModel.controllerProfiles[pIdx].appConfigs[aIdx].keyConfig },
+                set: { newValue in
+                    appModel.$controllerProfiles.withLock { profiles in
+                        profiles[pIdx].appConfigs[aIdx].keyConfig = newValue
+                    }
+                }
+            )
         }
-        return profile.defaultKeyConfig
+
+        return Binding(
+            get: { appModel.controllerProfiles[pIdx].defaultKeyConfig },
+            set: { newValue in
+                appModel.$controllerProfiles.withLock { profiles in
+                    profiles[pIdx].defaultKeyConfig = newValue
+                }
+            }
+        )
     }
 
     var body: some View {
@@ -35,8 +52,13 @@ struct ContentView: View {
                     )
                     .frame(minHeight: 100, idealHeight: 150)
 
-                    KeyMapListView(keyConfig: selectedKeyConfig)
-                        .frame(minHeight: 200)
+                    if let binding = keyConfigBinding {
+                        KeyMapListView(keyConfig: binding, isEmpty: false)
+                            .frame(minHeight: 200)
+                    } else {
+                        KeyMapListView(keyConfig: .constant(KeyConfig(keyMaps: [])), isEmpty: true)
+                            .frame(minHeight: 200)
+                    }
                 }
             }
         }
