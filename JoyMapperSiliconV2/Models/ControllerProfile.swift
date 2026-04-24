@@ -20,11 +20,16 @@ struct ControllerProfile: Codable, Identifiable, Equatable {
         let hasLeftStick = type == .JoyConL || type == .ProController
         let hasRightStick = type == .JoyConR || type == .ProController
 
+        let buttons = controllerButtons[type] ?? []
+        let keyMaps = buttons.map { button in
+            KeyMap(button: buttonNames[button] ?? "Unknown")
+        }
+
         return ControllerProfile(
             id: serialID,
             controllerType: type.rawValue,
             defaultKeyConfig: KeyConfig(
-                keyMaps: [],
+                keyMaps: keyMaps,
                 leftStick: hasLeftStick ? .defaultConfig() : nil,
                 rightStick: hasRightStick ? .defaultConfig() : nil
             ),

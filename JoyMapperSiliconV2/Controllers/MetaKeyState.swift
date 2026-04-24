@@ -15,7 +15,7 @@ func resetMetaKeyState() {
     DispatchQueue.main.async {
         metaKeys.forEach {
             let ev = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode($0), keyDown: false)
-            ev?.post(tap: .cghidEventTap)
+            ev?.post(tap: .cgSessionEventTap)
         }
     }
 }
@@ -55,21 +55,21 @@ func metaKeyEvent(config: KeyMap, keyDown: Bool) {
     let modifiers = NSEvent.ModifierFlags(rawValue: UInt(config.modifiers))
     if !shift && modifiers.contains(.shift) {
         let ev = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Shift), keyDown: keyDown)
-        ev?.post(tap: .cghidEventTap)
+        ev?.post(tap: .cgSessionEventTap)
     }
 
     if !option && modifiers.contains(.option) {
         let ev = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Option), keyDown: keyDown)
-        ev?.post(tap: .cghidEventTap)
+        ev?.post(tap: .cgSessionEventTap)
     }
 
     if !control && modifiers.contains(.control) {
         let ev = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Control), keyDown: keyDown)
-        ev?.post(tap: .cghidEventTap)
+        ev?.post(tap: .cgSessionEventTap)
     }
 
     if !command && modifiers.contains(.command) {
         let ev = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_Command), keyDown: keyDown)
-        ev?.post(tap: .cghidEventTap)
+        ev?.post(tap: .cgSessionEventTap)
     }
 }

@@ -32,6 +32,25 @@ class AppModel {
             DispatchQueue.main.async { self?.handleConnectionState(device: device, state: state) }
         }
 
+        // Backfill empty keyMaps on saved profiles (from before buttons were pre-populated)
+        $controllerProfiles.withLock { profiles in
+            for i in profiles.indices {
+                let type = profiles[i].type
+                if profiles[i].defaultKeyConfig.keyMaps.isEmpty, let buttons = controllerButtons[type] {
+                    profiles[i].defaultKeyConfig.keyMaps = buttons.map { button in
+                        KeyMap(button: buttonNames[button] ?? "Unknown")
+                    }
+                }
+                for j in profiles[i].appConfigs.indices {
+                    if profiles[i].appConfigs[j].keyConfig.keyMaps.isEmpty, let buttons = controllerButtons[type] {
+                        profiles[i].appConfigs[j].keyConfig.keyMaps = buttons.map { button in
+                            KeyMap(button: buttonNames[button] ?? "Unknown")
+                        }
+                    }
+                }
+            }
+        }
+
         // Hydrate GameControllers from saved profiles
         for profile in controllerProfiles {
             let gc = makeGameController(for: profile)

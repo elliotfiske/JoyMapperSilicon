@@ -215,11 +215,11 @@ class GameController {
                     with: .systemDefined, location: mousePos, modifierFlags: flags,
                     timestamp: ProcessInfo().systemUptime, windowNumber: 0, context: nil,
                     subtype: Int16(NX_SUBTYPE_AUX_CONTROL_BUTTONS), data1: data1, data2: -1)
-                ev?.cgEvent?.post(tap: .cghidEventTap)
+                ev?.cgEvent?.post(tap: .cgSessionEventTap)
             } else {
                 let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(config.keyCode), keyDown: true)
                 event?.flags = CGEventFlags(rawValue: CGEventFlags.RawValue(config.modifiers))
-                event?.post(tap: .cghidEventTap)
+                event?.post(tap: .cgSessionEventTap)
             }
         } else if config.mouseButton < 0 && config.modifiers != 0 {
             metaKeyEvent(config: config, keyDown: true)
@@ -250,7 +250,7 @@ class GameController {
             default: break
             }
             event?.flags = CGEventFlags(rawValue: CGEventFlags.RawValue(config.modifiers))
-            event?.post(tap: .cghidEventTap)
+            event?.post(tap: .cgSessionEventTap)
         }
     }
 
@@ -266,11 +266,11 @@ class GameController {
                     with: .systemDefined, location: mousePos, modifierFlags: flags,
                     timestamp: ProcessInfo().systemUptime, windowNumber: 0, context: nil,
                     subtype: Int16(NX_SUBTYPE_AUX_CONTROL_BUTTONS), data1: data1, data2: -1)
-                ev?.cgEvent?.post(tap: .cghidEventTap)
+                ev?.cgEvent?.post(tap: .cgSessionEventTap)
             } else {
                 let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(config.keyCode), keyDown: false)
                 event?.flags = CGEventFlags(rawValue: CGEventFlags.RawValue(config.modifiers))
-                event?.post(tap: .cghidEventTap)
+                event?.post(tap: .cgSessionEventTap)
             }
             metaKeyEvent(config: config, keyDown: false)
         } else if config.mouseButton < 0 && config.modifiers != 0 {
@@ -300,7 +300,7 @@ class GameController {
                 isButton5Dragging = false
             default: break
             }
-            event?.post(tap: .cghidEventTap)
+            event?.post(tap: .cgSessionEventTap)
         }
     }
 
@@ -400,7 +400,7 @@ class GameController {
             return (.mouseMoved, .left)
         }()
         let event = CGEvent(mouseEventSource: source, mouseType: mouseType, mouseCursorPosition: newPos, mouseButton: mouseButton)
-        event?.post(tap: .cghidEventTap)
+        event?.post(tap: .cgSessionEventTap)
     }
 
     private func stickMouseWheelHandler(pos: CGPoint, speed: CGFloat) {
@@ -408,7 +408,7 @@ class GameController {
         let source = CGEventSource(stateID: .hidSystemState)
         let event = CGEvent(scrollWheelEvent2Source: source, units: .pixel, wheelCount: 2,
                             wheel1: Int32(pos.y * speed), wheel2: Int32(pos.x * speed), wheel3: 0)
-        event?.post(tap: .cghidEventTap)
+        event?.post(tap: .cgSessionEventTap)
     }
 
     // MARK: - Icon

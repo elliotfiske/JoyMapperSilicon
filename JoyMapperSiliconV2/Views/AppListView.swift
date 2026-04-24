@@ -75,11 +75,16 @@ struct AppListView: View {
             let hasLeftStick = profile.type == .JoyConL || profile.type == .ProController
             let hasRightStick = profile.type == .JoyConR || profile.type == .ProController
 
+            let buttons = controllerButtons[profile.type] ?? []
+            let keyMaps = buttons.map { button in
+                KeyMap(button: buttonNames[button] ?? "Unknown")
+            }
+
             let newConfig = AppConfig(
                 bundleID: bundleID,
                 displayName: displayName,
                 keyConfig: KeyConfig(
-                    keyMaps: [],
+                    keyMaps: keyMaps,
                     leftStick: hasLeftStick ? .defaultConfig() : nil,
                     rightStick: hasRightStick ? .defaultConfig() : nil
                 )
