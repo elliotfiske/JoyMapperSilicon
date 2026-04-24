@@ -6,7 +6,7 @@ let project = Project(
         base: [
             "DEVELOPMENT_TEAM": "CKGA64W25Z",
             "CODE_SIGN_STYLE": "Automatic",
-            "SWIFT_VERSION": "5.0",
+            "SWIFT_VERSION": "6.0",
         ],
         debug: [
             "ENABLE_TESTABILITY": "YES",
@@ -21,11 +21,9 @@ let project = Project(
             bundleId: "com.elliotfiske.JoyMapperSilicon",
             deploymentTargets: .macOS("26.0"),
             infoPlist: .file(path: "JoyKeyMapper/Info.plist"),
-            sources: ["JoyKeyMapper/**/*.swift"],
+            sources: ["JoyMapperSiliconV2/**/*.swift"],
             resources: .resources(
                 [
-                    "JoyKeyMapper/Views/**/*.storyboard",
-                    "JoyKeyMapper/Views/**/*.xib",
                     "JoyKeyMapper/Assets.xcassets",
                     "JoyKeyMapper/Misc/*.strings",
                 ]
@@ -36,17 +34,10 @@ let project = Project(
                     path: "scripts/set_build_number.sh",
                     name: "Set build number"
                 ),
-                .post(
-                    script: """
-                    mkdir -p "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems"
-                    cp -R "${BUILT_PRODUCTS_DIR}/JoyMapperSiliconLauncher.app" "${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems/"
-                    """,
-                    name: "Embed Login Items"
-                ),
             ],
             dependencies: [
                 .target(name: "JoyConSwift"),
-                .target(name: "JoyMapperSiliconLauncher"),
+                .external(name: "Sharing"),
             ],
             settings: .settings(
                 base: [
@@ -55,38 +46,6 @@ let project = Project(
                     "CURRENT_PROJECT_VERSION": "10",
                     "MARKETING_VERSION": "1.0",
                     "CODE_SIGN_ENTITLEMENTS": "JoyKeyMapper/JoyKeyMapper.entitlements",
-                ],
-                configurations: [
-                    .debug(name: "Debug"),
-                    .release(name: "Release"),
-                ]
-            ),
-            coreDataModels: [
-                .coreDataModel("JoyKeyMapper/DataModels/JoyKeyMapper.xcdatamodeld"),
-            ]
-        ),
-
-        // MARK: - Launcher Helper
-        .target(
-            name: "JoyMapperSiliconLauncher",
-            destinations: [.mac],
-            product: .app,
-            bundleId: "cn.qibinc.JoyMapperSiliconLauncher",
-            deploymentTargets: .macOS("26.0"),
-            infoPlist: .file(path: "JoyKeyMapperLauncher/Info.plist"),
-            sources: ["JoyKeyMapperLauncher/**/*.swift"],
-            resources: .resources(
-                [
-                    "JoyKeyMapperLauncher/**/*.storyboard",
-                    "JoyKeyMapperLauncher/Assets.xcassets",
-                ]
-            ),
-            entitlements: .file(path: "JoyKeyMapperLauncher/JoyKeyMapperLauncher.entitlements"),
-            settings: .settings(
-                base: [
-                    "ENABLE_HARDENED_RUNTIME": "YES",
-                    "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
-                    "SKIP_INSTALL": "YES",
                 ],
                 configurations: [
                     .debug(name: "Debug"),
@@ -106,6 +65,7 @@ let project = Project(
             settings: .settings(
                 base: [
                     "DEFINES_MODULE": "YES",
+                    "SWIFT_VERSION": "5.0",
                 ]
             )
         ),
