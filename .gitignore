@@ -2,6 +2,7 @@
 Derived/
 *.xcodeproj
 *.xcworkspace
+Tuist/.build/
 
 # Xcode
 DerivedData/
