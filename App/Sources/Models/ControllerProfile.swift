@@ -69,6 +69,8 @@ struct MappingConfig: Codable, Equatable, Sendable {
                     .x: .key(kVK_Space),
                     .y: .key(kVK_Delete),
                     .plus: .key(kVK_Tab, [.command]),
+                    .c: .dictation(.holdToTalk),
+                    .home: .dictation(.pasteLastDictation),
                 ],
                 stick: StickConfig(mode: .scroll, speed: 25)
             )

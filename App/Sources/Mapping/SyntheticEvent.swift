@@ -12,6 +12,10 @@ enum SyntheticEvent: Hashable, Sendable, Codable {
     case mouseMove(dx: Double, dy: Double, dragging: MouseButton?)
     /// Scrolls by pixels (+y scrolls content down).
     case scroll(dx: Double, dy: Double)
+    /// A dictation action from a controller button. Not input: routed to dictation.
+    case action(DictationAction, down: Bool)
+    /// Dictated text pasted into the frontmost app. Only recorded in tests.
+    case insertText(String)
 
     var logDescription: String {
         switch self {
@@ -25,6 +29,10 @@ enum SyntheticEvent: Hashable, Sendable, Codable {
             String(format: "move %.1f,%.1f", dx, dy) + (dragging.map { " dragging \($0.displayName)" } ?? "")
         case let .scroll(dx, dy):
             String(format: "scroll %.1f,%.1f", dx, dy)
+        case let .action(action, down):
+            "\(action.rawValue) \(down ? "down" : "up")"
+        case let .insertText(text):
+            "insert \(text.count) characters"
         }
     }
 }

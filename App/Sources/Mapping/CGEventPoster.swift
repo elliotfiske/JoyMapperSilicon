@@ -46,6 +46,10 @@ struct CGEventPoster: EventPoster {
                 wheel3: 0
             )
             scroll?.post(tap: .cgSessionEventTap)
+
+        case .action, .insertText:
+            // Handled by `RoutingPoster` and `TextInserter`, not CoreGraphics.
+            break
         }
     }
 

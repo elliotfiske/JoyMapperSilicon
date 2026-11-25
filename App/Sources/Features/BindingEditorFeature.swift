@@ -55,6 +55,7 @@ struct BindingEditorFeature {
         case keySelected(Int?)
         case modifierToggled(Modifiers)
         case mouseButtonSelected(MouseButton?)
+        case actionSelected(DictationAction?)
         case recordTapped
         case keyRecorded(code: Int, modifiers: Modifiers)
         case clearTapped
@@ -78,10 +79,12 @@ struct BindingEditorFeature {
                 return .none
 
             case let .keySelected(code):
+                state.binding.action = nil
                 state.binding.keyCode = code
                 return .none
 
             case let .modifierToggled(modifier):
+                state.binding.action = nil
                 if state.binding.modifiers.contains(modifier) {
                     state.binding.modifiers.remove(modifier)
                 } else {
@@ -90,7 +93,13 @@ struct BindingEditorFeature {
                 return .none
 
             case let .mouseButtonSelected(button):
+                state.binding.action = nil
                 state.binding.mouseButton = button
+                return .none
+
+            case let .actionSelected(action):
+                // An action replaces any key or click: a button does one or the other.
+                state.binding = action.map(KeyBinding.dictation) ?? .none
                 return .none
 
             case .recordTapped:
@@ -100,6 +109,7 @@ struct BindingEditorFeature {
             case let .keyRecorded(code, modifiers):
                 guard state.isRecording else { return .none }
                 state.isRecording = false
+                state.binding.action = nil
                 state.binding.keyCode = code
                 state.binding.modifiers = modifiers
                 Log.app.info("Recorded \(state.binding.displayString) for \(state.target.identifier)")

@@ -24,6 +24,8 @@ struct JoyMapperSiliconApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    @MainActor private var dictationPanel: FloatingDictationPanel?
+
     /// `nil` while hosting unit tests: they build their own stores with test dependencies.
     @MainActor static let store: StoreOf<AppFeature>? = {
         let isHostingTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -37,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.app.notice("Launched \(Bundle.main.bundlePath) pid \(ProcessInfo.processInfo.processIdentifier)")
         // Started here, not from the window, so controllers keep working with the window closed.
         store.send(.task)
+        dictationPanel = FloatingDictationPanel(store: store.scope(state: \.dictation, action: \.dictation))
         #if DEBUG
         // Lets tests and scripts drive the app without the real mouse (scripts/driver.sh).
         do {

@@ -64,6 +64,20 @@ struct BindingEditorView: View {
                 .padding(4)
             }
 
+            GroupBox("Dictation") {
+                Picker("Action", selection: Binding(
+                    get: { store.binding.action },
+                    set: { store.send(.actionSelected($0)) }
+                )) {
+                    Text("None").tag(DictationAction?.none)
+                    ForEach(DictationAction.allCases, id: \.self) { action in
+                        Text(action.displayName).tag(DictationAction?.some(action))
+                    }
+                }
+                .padding(4)
+                .accessibilityIdentifier("editor-action")
+            }
+
             GroupBox("Mouse") {
                 Picker("Mouse button", selection: Binding(
                     get: { store.binding.mouseButton },

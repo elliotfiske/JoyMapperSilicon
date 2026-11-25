@@ -42,6 +42,10 @@ let project = Project(
                 "LSUIElement": false,
                 "NSBluetoothAlwaysUsageDescription":
                     "JoyMapper Silicon connects to your Joy-Con 2 controllers over Bluetooth.",
+                "NSMicrophoneUsageDescription":
+                    "JoyMapper Silicon records your voice when you dictate.",
+                "NSSpeechRecognitionUsageDescription":
+                    "JoyMapper Silicon turns your dictation into text on this Mac.",
                 "NSHumanReadableCopyright": "MIT License",
             ]),
             sources: ["App/Sources/**"],

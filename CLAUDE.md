@@ -26,6 +26,24 @@ CoreBluetooth ──► Switch2Central ──► MappingEngine ──► CGEvent
 - Input reports never go through the store, because they arrive at report rate. The store only gets connection events and throttled previews.
 - `Vendor/JoyConSwift`: the old Switch 1 HID framework. The app doesn't link it. It's kept for a possible Switch 1 Pro Controller transport.
 
+## Dictation
+
+A floating pill on the right edge of the screen: an `NSPanel` that never takes focus (`FloatingDictationPanel`). It expands while you dictate.
+
+- **Start and stop:** hold Right ⌥, ⌃⌥Space to start or stop, ⌃⌥V to paste the last dictation (`HotkeyMonitor`, a session event tap that needs Accessibility). Joy-Con buttons can also have a `DictationAction`: in the starter R mapping, C is hold-to-talk and Home pastes the last dictation.
+- **Pipeline (`DictationFeature`):**
+  1. Record from the microphone into a file, and run on-device `SpeechAnalyzer`/`DictationTranscriber` at the same time, so the transcript is live.
+  2. Bias recognition with dictionary terms plus symbols read from the frontmost window (`ScreenContext`, through Accessibility).
+  3. Claude cleans up the text through the company LLM gateway (`CleanupService`, Sonnet 5.5 with `thinking: between_tools` at low effort).
+  4. Paste the result (`TextInserter`, which puts your clipboard back afterwards).
+  If cleanup fails or times out, the raw text is pasted instead.
+- **Never commit the gateway URL or key.** The URL is in `~/Library/Application Support/JoyMapperSilicon/dictation-settings.json`, and the key is in the Keychain (`GatewayKeychain`).
+- **History:** `Dictation/history.jsonl` (append-only; the newest line per ID wins) and `Dictation/Audio/<id>.caf`. Nothing is deleted.
+- **Test hooks:**
+  - `JOYMAPPER_DICTATION_AUDIO_FILE=<file>` reads that file instead of the microphone. Make one with `say -o x.aiff "…"`.
+  - `JOYMAPPER_CLEANUP_STUB=1` returns `[clean] <raw>` without calling the gateway.
+  - With `JOYMAPPER_EVENT_LOG` set, pasted text is recorded instead of pasted.
+
 ## Joy-Con 2 protocol: facts verified on hardware
 
 The full reference is in `docs/switch2-ble-protocol.md`.

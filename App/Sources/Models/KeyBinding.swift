@@ -7,6 +7,8 @@ struct KeyBinding: Codable, Equatable, Hashable, Sendable {
     var keyCode: Int?
     var modifiers: Modifiers = []
     var mouseButton: MouseButton?
+    /// Starts, stops or pastes dictation instead of sending input.
+    var action: DictationAction?
 
     static let none = KeyBinding()
 
@@ -14,12 +16,14 @@ struct KeyBinding: Codable, Equatable, Hashable, Sendable {
         let hasKey = keyCode != nil
         let hasMouse = mouseButton != nil
         let hasModifier = !modifiers.isEmpty
-        return !hasKey && !hasMouse && !hasModifier
+        let hasAction = action != nil
+        return !hasKey && !hasMouse && !hasModifier && !hasAction
     }
 
     /// "⌘⇧K", "Left click", "⌥ + Right click", or "—".
     var displayString: String {
         guard !isEmpty else { return "—" }
+        if let action { return action.displayName }
         var parts: [String] = []
         let modifierText = modifiers.symbols
         let keyText = keyCode.map(KeyNames.name(for:))
@@ -44,6 +48,10 @@ struct KeyBinding: Codable, Equatable, Hashable, Sendable {
 
     static func mouse(_ button: MouseButton) -> KeyBinding {
         KeyBinding(mouseButton: button)
+    }
+
+    static func dictation(_ action: DictationAction) -> KeyBinding {
+        KeyBinding(action: action)
     }
 }
 

@@ -197,6 +197,16 @@ final class MappingEngineTests: XCTestCase {
         ])
     }
 
+    func testDictationActionGoesOutAsAnAction() {
+        configure(MappingConfig(buttons: [.c: .dictation(.holdToTalk)]))
+        press([.c])
+        press([])
+        XCTAssertEqual(poster.events, [
+            .action(.holdToTalk, down: true),
+            .action(.holdToTalk, down: false),
+        ])
+    }
+
     func testUnmappedControllerDoesNothing() {
         engine.apply(MappingSnapshot(isEnabled: true, configs: [:]))
         press([.a])

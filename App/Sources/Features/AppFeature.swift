@@ -1,6 +1,13 @@
 import ComposableArchitecture
 import Foundation
 
+/// What the main window shows.
+enum Page: Hashable, Sendable {
+    case controllers
+    case dictation
+    case history
+}
+
 /// Which mappings the detail pane edits: the controller's defaults, or one app's override.
 enum ConfigScope: Hashable, Sendable {
     case defaults
@@ -27,6 +34,8 @@ struct AppFeature {
         var recentApps: [FrontmostApp] = []
         var selectedControllerID: String?
         var selectedScope: ConfigScope = .defaults
+        var page: Page = .controllers
+        var dictation = DictationFeature.State()
         @Presents var editor: BindingEditorFeature.State?
 
         var selectedProfile: ControllerProfile? {
@@ -75,6 +84,7 @@ struct AppFeature {
         case revealLogsTapped
 
         case controllerSelected(String?)
+        case pageSelected(Page)
         case disconnectTapped(String)
         case forgetTapped(String)
         case renameController(String, name: String)
@@ -92,6 +102,7 @@ struct AppFeature {
         case resetToStarterTapped
 
         case editor(PresentationAction<BindingEditorFeature.Action>)
+        case dictation(DictationFeature.Action)
     }
 
     @Dependency(\.controllers) var controllers
@@ -106,6 +117,9 @@ struct AppFeature {
     enum CancelID { case accessibilityPolling }
 
     var body: some ReducerOf<Self> {
+        Scope(state: \.dictation, action: \.dictation) {
+            DictationFeature()
+        }
         Reduce { state, action in
             switch action {
             case .task:
@@ -168,6 +182,11 @@ struct AppFeature {
             case let .controllerSelected(id):
                 state.selectedControllerID = id
                 state.selectedScope = .defaults
+                state.page = .controllers
+                return .none
+
+            case let .pageSelected(page):
+                state.page = page
                 return .none
 
             case let .disconnectTapped(id):
@@ -253,7 +272,7 @@ struct AppFeature {
                 Log.app.info("Bound \(target.identifier) to \(binding.displayString)")
                 return .none
 
-            case .editor:
+            case .editor, .dictation:
                 return .none
             }
         }
@@ -277,6 +296,7 @@ struct AppFeature {
         let snapshot = state.mappingSnapshot
         let logRaw = state.settings.logRawReports
         return .merge(
+            .send(.dictation(.task)),
             .run { send in
                 engine.update(snapshot)
                 controllers.setRawReportLogging(logRaw)

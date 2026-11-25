@@ -8,6 +8,17 @@ Maps Nintendo Switch 2 **Joy-Con 2** buttons and sticks to keyboard keys and mou
 - Bindings can be any key with modifiers, media keys, or mouse buttons (including dragging).
 - It's a Dock app, not a menu bar app. Click the Dock icon to configure it; close the window and it keeps working.
 
+## Dictation
+
+A small mic pill sits on the right edge of the screen; it never takes focus, and expands to show what you're saying as you say it.
+
+- **Hold Right ⌥** to talk, or press **⌃⌥Space** to start and stop. **⌃⌥V** pastes the last dictation again.
+- On a Joy-Con, pick a Dictation action for any button. The starter R mapping holds **C** to talk and pastes the last dictation with **Home**.
+- Speech recognition runs on your Mac and uses names from the frontmost window (code symbols, file names), plus your dictionary. Claude then cleans up the text through your company's LLM gateway, and the result is pasted into the app you were using.
+- Every dictation is kept: the audio, what was heard, and the cleaned-up text. Search them under **History**.
+
+Set the gateway URL and key under **Dictation** in the app. The key is stored in your Keychain.
+
 ## Connecting a Joy-Con 2
 
 1. Open the app.

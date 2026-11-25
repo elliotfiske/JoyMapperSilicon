@@ -160,6 +160,10 @@ final class MappingEngine: @unchecked Sendable {
         controllers[controllerID]?.held[source] = binding
         Log.mapping.info("\(controllerID.prefix(8)) \(Self.describe(source)) → \(binding.displayString) down")
 
+        if let action = binding.action {
+            poster.post(.action(action, down: true))
+            return
+        }
         pressModifiers(binding.modifiers)
         let activeModifiers = currentModifiers()
         if let code = binding.keyCode {
@@ -179,6 +183,10 @@ final class MappingEngine: @unchecked Sendable {
         guard let binding = controllers[controllerID]?.held.removeValue(forKey: source) else { return }
         Log.mapping.info("\(controllerID.prefix(8)) \(Self.describe(source)) → \(binding.displayString) up")
 
+        if let action = binding.action {
+            poster.post(.action(action, down: false))
+            return
+        }
         let activeModifiers = currentModifiers()
         if let mouse = binding.mouseButton {
             if let index = heldMouseButtons.lastIndex(of: mouse) { heldMouseButtons.remove(at: index) }

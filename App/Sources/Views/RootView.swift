@@ -13,10 +13,17 @@ struct RootView: View {
             VStack(spacing: 0) {
                 StatusBar(store: store)
                 Divider()
-                if let profile = store.selectedProfile {
-                    ProfileDetailView(store: store, profile: profile)
-                } else {
-                    EmptyControllersView(store: store)
+                switch store.page {
+                case .dictation:
+                    DictationSettingsView(store: store.scope(state: \.dictation, action: \.dictation))
+                case .history:
+                    DictationHistoryView(store: store.scope(state: \.dictation, action: \.dictation))
+                case .controllers:
+                    if let profile = store.selectedProfile {
+                        ProfileDetailView(store: store, profile: profile)
+                    } else {
+                        EmptyControllersView(store: store)
+                    }
                 }
             }
         }
@@ -93,7 +100,7 @@ struct ControllerSidebar: View {
 
     var body: some View {
         List(selection: Binding(
-            get: { store.selectedControllerID },
+            get: { store.page == .controllers ? store.selectedControllerID : nil },
             set: { store.send(.controllerSelected($0)) }
         )) {
             Section("Controllers") {
@@ -109,6 +116,18 @@ struct ControllerSidebar: View {
                     .contentShape(Rectangle())
                     .onTapGesture { store.send(.controllerSelected(profile.id)) }
                 }
+            }
+            Section("Dictation") {
+                Label("Dictation", systemImage: "mic")
+                    .contentShape(Rectangle())
+                    .onTapGesture { store.send(.pageSelected(.dictation)) }
+                    .listRowBackground(store.page == .dictation ? Color.accentColor.opacity(0.2) : nil)
+                    .accessibilityIdentifier("sidebar-dictation")
+                Label("History (\(store.dictation.history.count))", systemImage: "clock.arrow.circlepath")
+                    .contentShape(Rectangle())
+                    .onTapGesture { store.send(.pageSelected(.history)) }
+                    .listRowBackground(store.page == .history ? Color.accentColor.opacity(0.2) : nil)
+                    .accessibilityIdentifier("sidebar-history")
             }
             Section("Settings") {
                 Toggle("Open at login", isOn: Binding(

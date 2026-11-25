@@ -5,5 +5,8 @@
 	<!-- Not sandboxed. Hardened runtime still needs this to use CoreBluetooth. -->
 	<key>com.apple.security.device.bluetooth</key>
 	<true/>
+	<!-- Dictation: the microphone under hardened runtime. -->
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
 </dict>
 </plist>

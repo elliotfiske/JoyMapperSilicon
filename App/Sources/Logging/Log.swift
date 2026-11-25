@@ -19,6 +19,8 @@ enum Log {
     static let mapping = Channel("mapping")
     /// App lifecycle, permissions, frontmost app, settings.
     static let app = Channel("app")
+    /// Recording, speech recognition, cleanup, pasting, history.
+    static let dictation = Channel("dictation")
 
     struct Channel: Sendable {
         let category: String

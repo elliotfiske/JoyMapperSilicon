@@ -24,16 +24,21 @@ final class LiveRuntime: @unchecked Sendable {
     let previews: AsyncStream<InputPreview>
     private let central: Switch2Central?
     private let simulated: SimulatedControllers?
+    /// Set when `JOYMAPPER_EVENT_LOG` is: events and dictated text are recorded, not sent.
+    private let recorder: FileRecordingPoster?
 
     private init() {
-        let poster: EventPoster
+        let output: EventPoster
         if let path = ProcessInfo.processInfo.environment["JOYMAPPER_EVENT_LOG"] {
             Log.app.notice("Recording events to \(path) instead of posting them")
-            poster = FileRecordingPoster(url: URL(filePath: path))
+            let recorder = FileRecordingPoster(url: URL(filePath: path))
+            self.recorder = recorder
+            output = recorder
         } else {
-            poster = CGEventPoster()
+            recorder = nil
+            output = CGEventPoster()
         }
-        engine = MappingEngine(poster: poster)
+        engine = MappingEngine(poster: RoutingPoster(output: output))
 
         let (stream, continuation) = AsyncStream.makeStream(of: InputPreview.self, bufferingPolicy: .bufferingNewest(50))
         previews = stream
@@ -46,6 +51,15 @@ final class LiveRuntime: @unchecked Sendable {
             central = Switch2Central(engine: engine)
             simulated = nil
         }
+    }
+
+    /// Pastes dictated text into the frontmost app, or records it in tests.
+    func insertText(_ text: String) async {
+        if let recorder {
+            recorder.post(.insertText(text))
+            return
+        }
+        await TextInserter.paste(text)
     }
 
     var controllerClient: ControllerClient {
@@ -68,6 +82,18 @@ final class LiveRuntime: @unchecked Sendable {
             update: { [engine] in engine.update($0) },
             previews: { [previews] in previews }
         )
+    }
+}
+
+/// Sends dictation actions from controller buttons to dictation, and everything else on.
+struct RoutingPoster: EventPoster {
+    let output: EventPoster
+
+    func post(_ event: SyntheticEvent) {
+        if case let .action(action, down) = event {
+            DictationRuntime.shared.handle(action, down: down)
+        }
+        output.post(event)
     }
 }
 
