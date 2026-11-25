@@ -100,7 +100,41 @@ struct DictationSettings: Codable, Equatable, Sendable {
     /// A published-CSV URL for the team dictionary (Google Sheets: File → Share → Publish to web).
     var sharedDictionaryURL = ""
 
+    /// A command that prints a short-lived gateway token on stdout (an SSO helper). Takes
+    /// precedence over a saved key. Stored locally like the URL, never in the repo.
+    var tokenCommand = ""
+    /// `NAME=value` pairs, space-separated, set when the helper runs quietly, to turn off its own
+    /// dialogs and notifications. (The browser is always off on quiet runs.)
+    var tokenCommandQuietEnvironment = ""
+
+    var usesTokenCommand: Bool { !tokenCommand.trimmingCharacters(in: .whitespaces).isEmpty }
+
     var isGatewayConfigured: Bool { !gatewayURL.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    init() {}
+
+    /// Missing keys take their defaults. (Synthesized decoding requires every key, so adding a
+    /// setting would make an existing file fail to decode and silently reset everything.)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = DictationSettings()
+        func value<T: Decodable>(_ key: CodingKeys, _ fallback: T) -> T {
+            (try? container.decodeIfPresent(T.self, forKey: key)) ?? fallback
+        }
+        gatewayURL = value(.gatewayURL, defaults.gatewayURL)
+        model = value(.model, defaults.model)
+        apiVersion = value(.apiVersion, defaults.apiVersion)
+        cleanupEnabled = value(.cleanupEnabled, defaults.cleanupEnabled)
+        cleanupTimeout = value(.cleanupTimeout, defaults.cleanupTimeout)
+        pasteAutomatically = value(.pasteAutomatically, defaults.pasteAutomatically)
+        holdKeyEnabled = value(.holdKeyEnabled, defaults.holdKeyEnabled)
+        toggleKeysEnabled = value(.toggleKeysEnabled, defaults.toggleKeysEnabled)
+        inputDeviceUID = value(.inputDeviceUID, defaults.inputDeviceUID)
+        screenContextEnabled = value(.screenContextEnabled, defaults.screenContextEnabled)
+        sharedDictionaryURL = value(.sharedDictionaryURL, defaults.sharedDictionaryURL)
+        tokenCommand = value(.tokenCommand, defaults.tokenCommand)
+        tokenCommandQuietEnvironment = value(.tokenCommandQuietEnvironment, defaults.tokenCommandQuietEnvironment)
+    }
 
     /// Whether to run the cleanup pass at all. The test stub counts as configured.
     var runsCleanup: Bool {

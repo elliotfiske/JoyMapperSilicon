@@ -37,7 +37,12 @@ A floating pill on the right edge of the screen: an `NSPanel` that never takes f
   3. Claude cleans up the text through the company LLM gateway (`CleanupService`, Sonnet 5.5 with `thinking: between_tools` at low effort).
   4. Paste the result (`TextInserter`, which puts your clipboard back afterwards).
   If cleanup fails or times out, the raw text is pasted instead.
-- **Never commit the gateway URL or key.** The URL is in `~/Library/Application Support/JoyMapperSilicon/dictation-settings.json`, and the key is in the Keychain (`GatewayKeychain`).
+- **Never commit the gateway URL, key, token command or anything company-specific.** All of it lives in `~/Library/Application Support/JoyMapperSilicon/dictation-settings.json`, and a static key, if used, in the Keychain (`GatewayKeychain`).
+- **Gateway auth (`GatewayAuth`):** either a static key, or a *token command* that prints a short-lived token (an SSO helper).
+  - The app runs the command only **quietly**: `BROWSER=/usr/bin/true`, plus the configured quiet-run environment variables, with a 20 s timeout.
+  - If that fails, cleanup is skipped and the panel shows "Log in again to turn on Claude cleanup". Only the **Log in** button runs the command interactively, which may open a browser. The app never starts a sign-in on its own.
+  - The token is kept in memory and fetched again 5 minutes before its JWT `exp`. A 401 triggers one quiet refetch and retry.
+- Settings decode with defaults for missing keys, so adding a setting doesn't reset an existing file.
 - **History:** `Dictation/history.jsonl` (append-only; the newest line per ID wins) and `Dictation/Audio/<id>.caf`. Nothing is deleted.
 - **Test hooks:**
   - `JOYMAPPER_DICTATION_AUDIO_FILE=<file>` reads that file instead of the microphone. Make one with `say -o x.aiff "…"`.

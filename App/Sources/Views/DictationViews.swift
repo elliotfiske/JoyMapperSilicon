@@ -43,6 +43,9 @@ struct DictationSettingsView: View {
             }
 
             Section("Cleanup with Claude") {
+                if store.needsLogin {
+                    LoginNeededRow(store: store)
+                }
                 Toggle("Clean up with Claude before pasting", isOn: $store.settings.cleanupEnabled)
                     .accessibilityIdentifier("dictation-cleanup-toggle")
                 TextField("Gateway URL", text: $store.settings.gatewayURL, prompt: Text("https://your-company-gateway"))
@@ -50,6 +53,18 @@ struct DictationSettingsView: View {
                 TextField("Model", text: $store.settings.model)
                     .accessibilityIdentifier("dictation-model")
                 TextField("anthropic-version header", text: $store.settings.apiVersion)
+                TextField("Token command", text: $store.settings.tokenCommand,
+                          prompt: Text("A command that prints a short-lived token (leave empty to use a key)"))
+                    .accessibilityIdentifier("dictation-token-command")
+                if store.settings.usesTokenCommand {
+                    TextField("Quiet-run environment", text: $store.settings.tokenCommandQuietEnvironment,
+                              prompt: Text("NAME=value pairs that stop the command's own pop-ups"))
+                    Button(store.isLoggingIn ? "Signing in…" : "Log in now") { store.send(.logInTapped) }
+                        .disabled(store.isLoggingIn)
+                    Text("The token stays in memory and renews quietly; the app never opens a sign-in page on its own.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 HStack {
                     SecureField(store.hasGatewayKey ? "Key saved (enter a new one to replace it)" : "Gateway key", text: $keyDraft)
                         .accessibilityIdentifier("dictation-gateway-key")

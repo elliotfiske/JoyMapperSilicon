@@ -52,6 +52,9 @@ struct DictationFeature {
         var current: DictationRecord?
         var history: IdentifiedArrayOf<DictationRecord> = []
         var hasGatewayKey = false
+        /// The token helper needs the user to sign in; cleanup is skipped until they do.
+        var needsLogin = false
+        var isLoggingIn = false
         var hotkeysActive = false
         /// Symbols last read from each app, used as recognition hints for the next dictation
         /// there while the fresh read runs.
@@ -95,6 +98,9 @@ struct DictationFeature {
         case revealAudioTapped(DictationRecord.ID)
         case gatewayKeySaved(String)
         case testGatewayTapped
+        case logInTapped
+        case loginNeeded
+        case loggedIn(TaskResult<Bool>)
         case gatewayTested(String)
         case addDictionaryEntry(term: String, heardAs: String)
         case removeDictionaryEntry(DictionaryEntry.ID)
@@ -126,7 +132,7 @@ struct DictationFeature {
                 state.hasGatewayKey = dictation.hasGatewayKey()
                 let options = HotkeyMonitor.Options(holdKey: state.settings.holdKeyEnabled, toggleKeys: state.settings.toggleKeysEnabled)
                 let sharedURL = URL(string: state.settings.sharedDictionaryURL)
-                Log.dictation.notice("Dictation ready: \(state.history.count) past dictations, gateway \(state.settings.isGatewayConfigured ? "set" : "not set"), key \(state.hasGatewayKey ? "saved" : "missing")")
+                Log.dictation.notice("Dictation ready: \(state.history.count) past dictations, gateway \(state.settings.isGatewayConfigured ? "set" : "not set"), auth \(state.settings.usesTokenCommand ? "token command" : (state.hasGatewayKey ? "saved key" : "missing"))")
                 return .merge(
                     .run { send in
                         for await command in dictation.commands() {
@@ -217,6 +223,7 @@ struct DictationFeature {
                 return recognized(text: text, duration: duration, state: &state)
 
             case let .cleaned(.success(result)):
+                state.needsLogin = false
                 guard var record = state.current else { return .none }
                 record.correctedText = result.text
                 record.correctionMilliseconds = result.milliseconds
@@ -225,6 +232,9 @@ struct DictationFeature {
                 return deliver(result.text, record: &record, state: &state)
 
             case let .cleaned(.failure(error)):
+                if (error as? CleanupError) == .loginRequired {
+                    state.needsLogin = true
+                }
                 guard var record = state.current else { return .none }
                 let message = error.localizedDescription
                 record.correctionError = message
@@ -278,10 +288,40 @@ struct DictationFeature {
                     do {
                         let result = try await dictation.clean(request, settings)
                         await send(.gatewayTested("OK in \(result.milliseconds) ms: “\(result.text)”"))
+                    } catch CleanupError.loginRequired {
+                        await send(.loginNeeded)
+                        await send(.gatewayTested("Log in again to turn on Claude cleanup."))
                     } catch {
                         await send(.gatewayTested("Failed: \(error.localizedDescription)"))
                     }
                 }
+
+            case .loginNeeded:
+                state.needsLogin = true
+                return .none
+
+            case .logInTapped:
+                guard !state.isLoggingIn else { return .none }
+                state.isLoggingIn = true
+                state.gatewayStatus = "Waiting for you to sign in in the browser…"
+                let settings = state.settings
+                return .run { send in
+                    await send(.loggedIn(TaskResult {
+                        try await dictation.logIn(settings)
+                        return true
+                    }))
+                }
+
+            case .loggedIn(.success):
+                state.isLoggingIn = false
+                state.needsLogin = false
+                state.gatewayStatus = "Signed in; cleanup is on"
+                return .none
+
+            case let .loggedIn(.failure(error)):
+                state.isLoggingIn = false
+                state.gatewayStatus = "Sign-in didn't finish: \(error.localizedDescription)"
+                return .none
 
             case let .gatewayTested(message):
                 state.gatewayStatus = message
@@ -428,7 +468,8 @@ struct DictationFeature {
             return collapseLater(after: .seconds(2))
         }
         let settings = state.settings
-        guard settings.runsCleanup else {
+        // Until the user signs in again, paste right away instead of waiting on the helper.
+        guard settings.runsCleanup, !state.needsLogin else {
             return deliver(text, record: &record, state: &state)
         }
         state.phase = .cleaning

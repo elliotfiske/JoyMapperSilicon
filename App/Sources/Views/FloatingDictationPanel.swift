@@ -133,6 +133,9 @@ struct FloatingDictationView: View {
                 .accessibilityLabel(store.phase.isBusy ? "Cancel" : "Close")
                 .accessibilityIdentifier("dictation-cancel")
             }
+            if store.needsLogin, !store.phase.isRecording {
+                LoginNeededRow(store: store)
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     Text(displayText)
@@ -175,6 +178,29 @@ struct FloatingDictationView: View {
         case .done: store.current?.pasted == true ? "Pasted" : (store.current?.correctionError == nil ? "Done" : "Done (not cleaned up)")
         case let .failed(message): message
         }
+    }
+}
+
+/// Cleanup is off until the user signs in to the gateway again. Signing in only starts here.
+struct LoginNeededRow: View {
+    let store: StoreOf<DictationFeature>
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .foregroundStyle(.orange)
+            Text("Log in again to turn on Claude cleanup")
+                .font(.caption)
+            Spacer(minLength: 8)
+            Button(store.isLoggingIn ? "Signing in…" : "Log in") { store.send(.logInTapped) }
+                .controlSize(.small)
+                .disabled(store.isLoggingIn)
+                .accessibilityIdentifier("dictation-log-in")
+        }
+        .padding(8)
+        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dictation-login-needed")
     }
 }
 

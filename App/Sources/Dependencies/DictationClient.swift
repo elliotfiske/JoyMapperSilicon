@@ -28,6 +28,8 @@ struct DictationClient: Sendable {
     var audioFileName: @Sendable (UUID) -> String
     var revealAudio: @Sendable (String) -> Void
     var hasGatewayKey: @Sendable () -> Bool
+    /// Runs the token helper interactively (it may open a browser to sign in).
+    var logIn: @Sendable (DictationSettings) async throws -> Void
     var saveGatewayKey: @Sendable (String) -> Void
     /// Downloads the team dictionary: a CSV with the term in column A and "heard as" in column B.
     var fetchSharedDictionary: @Sendable (URL) async throws -> [DictionaryEntry]
@@ -126,7 +128,7 @@ extension DictationClient: DependencyKey {
                 return await Task.detached { ScreenContext.capture(from: app) }.value
             },
             clean: { request, settings in
-                try await CleanupService.clean(request, settings: settings, key: GatewayKeychain.read())
+                try await CleanupService.clean(request, settings: settings, auth: .shared)
             },
             insert: { text in await LiveRuntime.shared.insertText(text) },
             copy: { text in
@@ -143,6 +145,7 @@ extension DictationClient: DependencyKey {
                 Task { @MainActor in NSWorkspace.shared.activateFileViewerSelecting([url]) }
             },
             hasGatewayKey: { GatewayKeychain.read()?.isEmpty == false },
+            logIn: { settings in try await GatewayAuth.shared.fetch(settings: settings, interactive: true) },
             saveGatewayKey: { GatewayKeychain.write($0) },
             fetchSharedDictionary: { url in
                 let (data, _) = try await URLSession.shared.data(from: url)
@@ -167,6 +170,7 @@ extension DictationClient: DependencyKey {
         audioFileName: { "\($0.uuidString).caf" },
         revealAudio: unimplemented("DictationClient.revealAudio"),
         hasGatewayKey: unimplemented("DictationClient.hasGatewayKey", placeholder: false),
+        logIn: unimplemented("DictationClient.logIn"),
         saveGatewayKey: unimplemented("DictationClient.saveGatewayKey"),
         fetchSharedDictionary: unimplemented("DictationClient.fetchSharedDictionary", placeholder: [])
     )

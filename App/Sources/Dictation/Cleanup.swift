@@ -19,6 +19,8 @@ struct CleanupResult: Equatable, Sendable {
 enum CleanupError: LocalizedError, Equatable {
     case notConfigured
     case missingKey
+    /// The token helper couldn't get a token without the user signing in.
+    case loginRequired
     case http(Int, String)
     case refused(String)
     case empty
@@ -28,6 +30,7 @@ enum CleanupError: LocalizedError, Equatable {
         switch self {
         case .notConfigured: "No gateway URL set in Dictation settings."
         case .missingKey: "No gateway key saved in Dictation settings."
+        case .loginRequired: "Log in again to turn on Claude cleanup."
         case let .http(status, body): "Gateway returned \(status): \(body.prefix(300))"
         case let .refused(category): "Claude declined to clean this up (\(category))."
         case .empty: "Cleanup returned no text."
@@ -43,14 +46,31 @@ enum CleanupService {
     /// For tests: `JOYMAPPER_CLEANUP_STUB=1` returns `[clean] <raw>` without any network call.
     static let stubEnvironmentKey = "JOYMAPPER_CLEANUP_STUB"
 
-    static func clean(_ request: CleanupRequest, settings: DictationSettings, key: String?) async throws -> CleanupResult {
+    static func clean(_ request: CleanupRequest, settings: DictationSettings, auth: GatewayAuth) async throws -> CleanupResult {
         if ProcessInfo.processInfo.environment[stubEnvironmentKey] != nil {
             return CleanupResult(text: "[clean] \(request.rawText)", model: "stub", milliseconds: 1)
         }
+        do {
+            let key = try await auth.credential(settings: settings)
+            return try await send(request, settings: settings, key: key)
+        } catch CleanupError.http(401, _) where settings.usesTokenCommand {
+            // The token was revoked or expired early: fetch a fresh one quietly and try once more.
+            Log.dictation.notice("Gateway said 401; getting a fresh token and retrying once")
+            await auth.invalidate()
+            let key = try await auth.credential(settings: settings)
+            do {
+                return try await send(request, settings: settings, key: key)
+            } catch CleanupError.http(401, _) {
+                await auth.invalidate()
+                throw CleanupError.loginRequired
+            }
+        }
+    }
+
+    private static func send(_ request: CleanupRequest, settings: DictationSettings, key: String) async throws -> CleanupResult {
         guard settings.isGatewayConfigured, let endpoint = endpointURL(settings.gatewayURL) else {
             throw CleanupError.notConfigured
         }
-        guard let key, !key.isEmpty else { throw CleanupError.missingKey }
 
         var urlRequest = URLRequest(url: endpoint, timeoutInterval: settings.cleanupTimeout)
         urlRequest.httpMethod = "POST"

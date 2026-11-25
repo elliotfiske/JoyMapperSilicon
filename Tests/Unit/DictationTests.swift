@@ -2,6 +2,14 @@ import ComposableArchitecture
 import XCTest
 @testable import JoyMapperSilicon
 
+extension DictationSettings {
+    static var withGateway: DictationSettings {
+        var settings = DictationSettings()
+        settings.gatewayURL = "https://gateway.test"
+        return settings
+    }
+}
+
 @MainActor
 final class DictationFeatureTests: XCTestCase {
     private final class Recorder: @unchecked Sendable {
@@ -20,7 +28,7 @@ final class DictationFeatureTests: XCTestCase {
 
     private func makeStore(
         recorder: Recorder,
-        settings: DictationSettings = DictationSettings(gatewayURL: "https://gateway.test"),
+        settings: DictationSettings = .withGateway,
         recognized: String = "um the joy con manager",
         clean: @escaping @Sendable (CleanupRequest) async throws -> CleanupResult = { request in
             CleanupResult(text: "The JoyConManager", model: "claude-sonnet-5-5", milliseconds: 420)
@@ -134,6 +142,25 @@ final class DictationFeatureTests: XCTestCase {
         await store.receive(\.cancelTapped) { $0.phase = .idle }
         XCTAssertEqual(recorder.inserted, [])
         XCTAssertEqual(store.state.history.first?.correctionError, "cancelled")
+    }
+
+    func testLoginRequiredShowsTheWarningAndLaterDictationsSkipCleanup() async {
+        let recorder = Recorder()
+        let store = makeStore(recorder: recorder, clean: { _ in throw CleanupError.loginRequired })
+        await store.send(.command(.toggle(source: "hotkey")))
+        await store.receive(\.recordingStarted)
+        await store.send(.command(.toggle(source: "hotkey")))
+        await store.receive(\.cleaned) { $0.needsLogin = true }
+        await store.receive(\.inserted)
+        XCTAssertEqual(recorder.inserted, ["um the joy con manager"])
+
+        await store.receive(\.collapse)
+        await store.send(.command(.toggle(source: "hotkey")))
+        await store.receive(\.recordingStarted)
+        await store.send(.command(.toggle(source: "hotkey")))
+        await store.receive(\.inserted)
+        XCTAssertEqual(recorder.cleanRequests.count, 1, "no second cleanup attempt until signed in")
+        XCTAssertEqual(recorder.inserted.count, 2)
     }
 
     func testNothingHeardDoesNotPaste() async {
@@ -283,5 +310,86 @@ final class ObjCExceptionCatcherTests: XCTestCase {
         var ran = false
         XCTAssertNil(JMCatchException { ran = true })
         XCTAssertTrue(ran)
+    }
+}
+
+final class GatewayAuthTests: XCTestCase {
+    private func jwt(exp: TimeInterval) -> String {
+        let payload = try! JSONSerialization.data(withJSONObject: ["sub": "me@example.com", "exp": exp])
+        let encoded = payload.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return "eyJhbGciOiJub25lIn0.\(encoded).sig"
+    }
+
+    func testReadsTheLastLineOfOutputAsTheToken() {
+        XCTAssertEqual(GatewayAuth.token(fromOutput: "abc.def.ghi\n"), "abc.def.ghi")
+        XCTAssertEqual(GatewayAuth.token(fromOutput: "\n  tok  \n\n"), "tok")
+        XCTAssertNil(GatewayAuth.token(fromOutput: ""))
+        XCTAssertNil(GatewayAuth.token(fromOutput: "Opening browser for login"))
+    }
+
+    func testReadsJWTExpiry() {
+        let expiry = Date(timeIntervalSince1970: 2_000_000_000)
+        XCTAssertEqual(GatewayAuth.expiry(ofJWT: jwt(exp: expiry.timeIntervalSince1970)), expiry)
+        XCTAssertNil(GatewayAuth.expiry(ofJWT: "not-a-jwt"))
+    }
+
+    func testQuietRunsTurnOffTheBrowserAndAddConfiguredVariables() {
+        var settings = DictationSettings()
+        settings.tokenCommandQuietEnvironment = "HELPER_NO_NOTIFY=1  OTHER=a=b junk"
+        let environment = GatewayAuth.quietEnvironment(settings)
+        XCTAssertEqual(environment["BROWSER"], "/usr/bin/true")
+        XCTAssertEqual(environment["HELPER_NO_NOTIFY"], "1")
+        XCTAssertEqual(environment["OTHER"], "a=b")
+        XCTAssertNil(environment["junk"])
+    }
+
+    func testFetchesQuietlyAndCachesUntilNearExpiry() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "gateway-auth-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let counter = directory.appending(path: "runs")
+        let script = directory.appending(path: "helper.sh")
+        let token = jwt(exp: Date().addingTimeInterval(3600).timeIntervalSince1970)
+        // Counts its runs, and refuses to work unless the browser is off (a quiet run).
+        try """
+        #!/bin/sh
+        echo x >> "\(counter.path)"
+        [ "$BROWSER" = "/usr/bin/true" ] || exit 3
+        echo "progress on stderr" >&2
+        echo "\(token)"
+        """.write(to: script, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+
+        var settings = DictationSettings()
+        settings.tokenCommand = script.path
+        let auth = GatewayAuth()
+        let first = try await auth.credential(settings: settings)
+        let second = try await auth.credential(settings: settings)
+        XCTAssertEqual(first, token)
+        XCTAssertEqual(second, token)
+        let runs = try String(contentsOf: counter, encoding: .utf8).split(separator: "\n").count
+        XCTAssertEqual(runs, 1, "the cached token is reused")
+    }
+
+    func testFailingHelperMeansLoginRequired() async {
+        var settings = DictationSettings()
+        settings.tokenCommand = "exit 1"
+        do {
+            _ = try await GatewayAuth().credential(settings: settings)
+            XCTFail("expected loginRequired")
+        } catch {
+            XCTAssertEqual(error as? CleanupError, .loginRequired)
+        }
+    }
+}
+
+final class DictationSettingsTests: XCTestCase {
+    func testOldSettingsFilesKeepTheirValues() throws {
+        let old = #"{"gatewayURL":"https://gateway.test","model":"claude-sonnet-5-5"}"#
+        let settings = try JSONDecoder().decode(DictationSettings.self, from: Data(old.utf8))
+        XCTAssertEqual(settings.gatewayURL, "https://gateway.test")
+        XCTAssertEqual(settings.inputDeviceUID, "")
+        XCTAssertTrue(settings.holdKeyEnabled)
     }
 }
