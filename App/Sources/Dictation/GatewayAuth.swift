@@ -51,7 +51,7 @@ actor GatewayAuth {
             stopWhenAskingForBrowser: !interactive
         )
         let elapsed = Int(Date().timeIntervalSince(started) * 1000)
-        guard result.status == 0, let token = Self.token(fromOutput: result.output) else {
+        guard result.status == 0, !result.wantedBrowser, let token = Self.token(fromOutput: result.output) else {
             let why = result.wantedBrowser ? ", it wanted to sign in" : (result.timedOut ? ", timed out" : "")
             Log.dictation.error("Token helper didn't produce a token \(mode) (exit \(result.status), \(elapsed) ms\(why)); login needed")
             throw CleanupError.loginRequired
@@ -164,12 +164,25 @@ extension GatewayAuth {
     /// Stops the helper and anything it started (a sign-in listener would otherwise keep
     /// running and hold the helper's lock, making the next Log in wait for it).
     static func terminateTree(_ process: Process) {
-        let pkill = Process()
-        pkill.executableURL = URL(filePath: "/usr/bin/pkill")
-        pkill.arguments = ["-TERM", "-P", String(process.processIdentifier)]
-        try? pkill.run()
-        pkill.waitUntilExit()
+        // Find the children first, stop the parent so it can't carry on once they're gone,
+        // then stop the children.
+        let children = childProcessIDs(of: process.processIdentifier)
         process.terminate()
+        for child in children {
+            kill(child, SIGTERM)
+        }
+    }
+
+    private static func childProcessIDs(of parent: pid_t) -> [pid_t] {
+        let pgrep = Process()
+        pgrep.executableURL = URL(filePath: "/usr/bin/pgrep")
+        pgrep.arguments = ["-P", String(parent)]
+        let output = Pipe()
+        pgrep.standardOutput = output
+        try? pgrep.run()
+        pgrep.waitUntilExit()
+        let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return text.split(whereSeparator: \.isNewline).compactMap { pid_t($0) }
     }
 }
 
