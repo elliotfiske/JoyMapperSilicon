@@ -1,36 +1,32 @@
-# JoyMapperSilicon (Fork)
-Nintendo Joy-Con / Pro Controller Mapper for Apple Silicon (also works on Intel-based macOS Big Sur). It maps gamepad buttons to keyboard / mouse events smoothly and works for games and platforms which haven't yet supported gamepad on M1 Macs, e.g., Witcher 3, CrossOver.
+# JoyMapper Silicon
 
-## Demo on YouTube
+Maps Nintendo Switch 2 **Joy-Con 2** buttons and sticks to keyboard keys and mouse actions on macOS, so you can drive your Mac from a controller. For example, you can browse while walking on a treadmill.
 
-[Apple Silicon Mac | CrossOver | Playing Witcher 3 with GAMEPAD (Nintendo Joy-Con / Pro Controller)
-](https://youtu.be/1jpcuREivmk)
+- Each Joy-Con is its own controller, with its own mappings.
+- Per-app overrides switch with the frontmost app.
+- The left stick moves the pointer, and the right stick scrolls. Either stick can also send keys, in eight directions.
+- Bindings can be any key with modifiers, media keys, or mouse buttons (including dragging).
+- It's a Dock app, not a menu bar app. Click the Dock icon to configure it; close the window and it keeps working.
 
-## Advantages v.s. alternatives
+## Connecting a Joy-Con 2
 
-|                                                          | Big Sur | Apple silicon native | Mouse working in games | 360° mouse move & acceleration (smooth view angle rotation) | Joystick orientation at 45°s (smooth character moving) | Both Joy Cons as a pair |
-| :------------------------------------------------------: | :-----: | :------------------: | :--------------------: | :---------------------------------------------------------: | :----------------------------------------------------: | :---------------------: |
-|     [Enjoyable](https://yukkurigames.com/enjoyable/)     |    ✅    |          ❌           |           ✅            |                              ❌                              |                           ✅                            |            ❌            |
-|       [Enjoy2](https://github.com/fyhuang/enjoy2/)       |    ❌    |          ❌           |           -            |                              -                              |                           -                            |            -            |
-| [JoyKeyMapper](https://github.com/magicien/JoyKeyMapper) |    ✅    |          ❌           |           ❌            |                              ✅                              |                           ❌                            |            ✅            |
-|                 JoyMapperSilicon (this app)                  |    ✅    |          ✅           |           ✅            |                              ✅                              |                           ✅                            |            ✅            |
+1. Open the app.
+2. Hold the small **sync** button on the Joy-Con's rail side until the lights sweep. The app connects on its own, and one light stays on.
+3. After that, pressing any button reconnects it; you don't need sync again.
 
-## Installation
+Don't pair Joy-Con 2s in System Settings → Bluetooth. They use Nintendo's own Bluetooth LE protocol, and the app handles the connection itself. Pairing to the Mac likely replaces the Joy-Con's pairing with a Switch 2; attach it to the console to pair it back.
 
-1. Download the zip file (JoyMapperSilicon.app.zip) from [Releases](https://github.com/qibinc/JoyMapperSilicon/releases/)
+Grant **Accessibility** permission when the app asks. Without it, macOS silently ignores the keys and clicks the app sends.
 
-2. Copy JoyMapperSilicon.app to `Applications/` folder.
+## Development
 
-## Usage
+Built with TCA and SwiftUI, and generated with Tuist. See [CLAUDE.md](CLAUDE.md) for the architecture, the Joy-Con 2 protocol notes, logging and tests.
 
-![screenshot](https://github.com/qibinc/JoyMapperSilicon/blob/master/resources/screenshot/screenshot_1.png)
+```bash
+scripts/run.sh         # build and launch in the background
+scripts/test.sh all    # unit tests, then background UI tests (they never take over the screen)
+```
 
-See [magicien's How to Use](https://github.com/magicien/JoyKeyMapper#how-to-use).
+## Acknowledgements
 
-## Support the work
-
-[![Paypal Donate](https://img.shields.io/badge/paypal-donate-orange)](https://paypal.me/joysilicon) You can buy me a cup of bubble tea if you like it.
-
-## Acknowledgement
-
-This application is heavily based on [magicien/JoyKeyMapper](https://github.com/magicien/JoyKeyMapper). We thank them a lot for open-sourcing the [JoyKeyMapper](https://apps.apple.com/us/app/joykeymapper/id1511416593?mt=12) app. Please also support them if possible.
+This app started as a fork of [qibinc/JoyMapperSilicon](https://github.com/qibinc/JoyMapperSilicon), which was based on [magicien/JoyKeyMapper](https://github.com/magicien/JoyKeyMapper). The Joy-Con 2 protocol work builds on [ndeadly/switch2_controller_research](https://github.com/ndeadly/switch2_controller_research), SDL's Switch 2 driver and [switch2mac](https://github.com/Peterksharma/switch2mac).
