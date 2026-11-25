@@ -270,3 +270,18 @@ final class SharedDictionaryTests: XCTestCase {
         XCTAssertTrue(entries.allSatisfy { $0.source == "shared" })
     }
 }
+
+final class ObjCExceptionCatcherTests: XCTestCase {
+    func testCatchesARaisedException() {
+        let exception = JMCatchException {
+            NSException(name: .invalidArgumentException, reason: "format mismatch", userInfo: nil).raise()
+        }
+        XCTAssertEqual(exception?.reason, "format mismatch")
+    }
+
+    func testReturnsNilWhenNothingIsRaised() {
+        var ran = false
+        XCTAssertNil(JMCatchException { ran = true })
+        XCTAssertTrue(ran)
+    }
+}

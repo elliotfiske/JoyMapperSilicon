@@ -70,6 +70,7 @@ let project = Project(
             // identity to ad-hoc.
             settings: .settings(
                 base: signingSettings.merging([
+                    "SWIFT_OBJC_BRIDGING_HEADER": "App/Sources/ObjC/JoyMapperSilicon-Bridging-Header.h",
                     "ENABLE_HARDENED_RUNTIME": "YES",
                     "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
                 ]) { _, new in new },

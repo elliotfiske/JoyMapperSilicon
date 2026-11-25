@@ -143,7 +143,7 @@ final class SpeechSession: @unchecked Sendable {
         )
         session.listenForResults()
 
-        guard let tapFormat = session.installTap() else { throw SessionError.noInputDevice }
+        guard let tapFormat = await session.installTapRetrying() else { throw SessionError.noInputDevice }
 
         // Bluetooth headsets change sample rate when their mic opens (AirPods drop to 16 or
         // 24 kHz call mode), and devices come and go. Each time, AVAudioEngine stops and the tap's
@@ -165,6 +165,9 @@ final class SpeechSession: @unchecked Sendable {
     /// Objective-C exception (which Swift can't catch) if the tap format's sample rate doesn't
     /// match the hardware's, so the format is read fresh every time, never cached. Returns nil
     /// when the device has no usable format at the moment (mid-switch).
+    ///
+    /// Bluetooth devices can still be mid-switch when the format is read, so the rates can
+    /// disagree anyway; the exception is caught and reported as nil.
     @discardableResult
     private func installTap() -> AVAudioFormat? {
         guard let engine, let analyzerFormat else { return nil }
@@ -173,7 +176,7 @@ final class SpeechSession: @unchecked Sendable {
         guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else { return nil }
         let converter = AVAudioConverter(from: hardwareFormat, to: analyzerFormat)
         let continuation = inputContinuation
-        input.installTap(onBus: 0, bufferSize: 4096, format: hardwareFormat) { [weak self] buffer, _ in
+        let tapBlock: AVAudioNodeTapBlock = { [weak self] buffer, _ in
             guard let self else { return }
             self.measure(buffer)
             guard let converted = Self.convert(buffer, with: converter, to: analyzerFormat),
@@ -182,7 +185,25 @@ final class SpeechSession: @unchecked Sendable {
             try? self.recordingFile?.write(from: converted)
             continuation?.yield(AnalyzerInput(buffer: converted))
         }
+        let exception = JMCatchException {
+            input.installTap(onBus: 0, bufferSize: 4096, format: hardwareFormat, block: tapBlock)
+        }
+        if let exception {
+            let reason = exception.reason ?? exception.name.rawValue
+            Log.dictation.error("Couldn't tap the microphone at \(Int(hardwareFormat.sampleRate)) Hz × \(hardwareFormat.channelCount): \(reason)")
+            return nil
+        }
         return hardwareFormat
+    }
+
+    /// Tries for about two seconds: long enough for AirPods to finish switching to call mode.
+    private func installTapRetrying() async -> AVAudioFormat? {
+        for attempt in 1...10 {
+            if let format = installTap() { return format }
+            Log.dictation.info("Microphone not ready (attempt \(attempt)); retrying")
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        return nil
     }
 
     private func restartAfterConfigurationChange() {
