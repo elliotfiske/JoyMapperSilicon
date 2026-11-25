@@ -56,8 +56,9 @@ final class LogFile: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "JoyMapperSilicon.LogFile")
     private var handle: FileHandle?
-    private var bytesWritten = 0
     private let maxBytes = 5 * 1024 * 1024
+    /// Several copies (yours, test runs) share the file; the pid tells their lines apart.
+    private let pid = ProcessInfo.processInfo.processIdentifier
     private let timestamp: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
@@ -71,27 +72,31 @@ final class LogFile: @unchecked Sendable {
         guard isEnabled else { return }
         let now = Date()
         queue.async {
-            let line = "\(self.timestamp.string(from: now)) [\(category)] \(Self.label(level)) \(message)\n"
+            let line = "\(self.timestamp.string(from: now)) \(self.pid) [\(category)] \(Self.label(level)) \(message)\n"
             self.write(Data(line.utf8))
         }
     }
 
     private func write(_ data: Data) {
         if handle == nil { open() }
-        if bytesWritten + data.count > maxBytes { rotate() }
+        if currentSize() + data.count > maxBytes { rotate() }
         handle?.write(data)
-        bytesWritten += data.count
+    }
+
+    private func currentSize() -> Int {
+        guard let handle else { return 0 }
+        var info = stat()
+        guard fstat(handle.fileDescriptor, &info) == 0 else { return 0 }
+        return Int(info.st_size)
     }
 
     private func open() {
-        let manager = FileManager.default
-        try? manager.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-        if !manager.fileExists(atPath: Self.url.path) {
-            manager.createFile(atPath: Self.url.path, contents: nil)
-        }
-        handle = try? FileHandle(forWritingTo: Self.url)
-        let end = (try? handle?.seekToEnd()) ?? 0
-        bytesWritten = Int(end)
+        try? FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
+        // O_APPEND: every write lands at the current end of the file, even when other copies of
+        // the app write to it too. (A plain handle keeps its own offset and overwrites theirs.)
+        let descriptor = Darwin.open(Self.url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+        guard descriptor >= 0 else { return }
+        handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
     }
 
     private func rotate() {

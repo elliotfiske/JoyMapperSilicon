@@ -81,7 +81,7 @@ Setup and recovery:
 
 ### Feedback loop with real controllers
 
-- Log: `tail -f ~/Library/Logs/JoyMapperSilicon/joymapper.log`. The same lines go to the unified log, subsystem `com.elliotfiske.JoyMapperSilicon`. Categories:
+- Log: `tail -f ~/Library/Logs/JoyMapperSilicon/joymapper.log`. Every line has the process ID, because your copy and test copies share the file. The unified log has the same lines: use `/usr/bin/log show`, since plain `log` is a zsh builtin. The same lines go to the unified log, subsystem `com.elliotfiske.JoyMapperSilicon`. Categories:
   - `ble`: connection, setup commands and replies, calibration, battery, raw button bits.
   - `input`: decoded presses.
   - `mapping`: what got posted.

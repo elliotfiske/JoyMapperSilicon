@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Generates the Xcode project and runs the tests.
 # Usage: scripts/test.sh [unit|ui|all]
+# Builds into build/dd-test, so it never replaces the copy scripts/run.sh launched.
 #   unit (default)  reducers, the Joy-Con 2 protocol parser and the mapping engine. Headless.
 #   ui              the background UI tests: a fresh copy of the app with simulated Joy-Cons,
 #                   driven through BackgroundDriver. It stays behind your windows and never
@@ -18,7 +19,7 @@ run() {
     -workspace JoyMapperSilicon.xcworkspace \
     -scheme "$scheme" \
     -destination 'platform=macOS' \
-    -derivedDataPath build/dd \
+    -derivedDataPath build/dd-test \
     -skipMacroValidation -skipPackagePluginValidation \
     "$@"
 }

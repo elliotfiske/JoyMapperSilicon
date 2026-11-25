@@ -62,6 +62,8 @@ final class SpeechSession: @unchecked Sendable {
     private var analyzerFormat: AVAudioFormat?
     /// Set once `stop` or `cancel` begins, so a late reconfiguration doesn't restart the mic.
     private var isStopping = false
+    /// Where the engine is started, restarted and stopped, one thing at a time.
+    private let audioQueue = DispatchQueue(label: "JoyMapperSilicon.SpeechSession.audio")
 
     private init(
         analyzer: SpeechAnalyzer,
@@ -143,19 +145,32 @@ final class SpeechSession: @unchecked Sendable {
         )
         session.listenForResults()
 
-        guard let tapFormat = await session.installTapRetrying() else { throw SessionError.noInputDevice }
-
         // Bluetooth headsets change sample rate when their mic opens (AirPods drop to 16 or
         // 24 kHz call mode), and devices come and go. Each time, AVAudioEngine stops and the tap's
-        // format no longer matches, so rebuild the tap for the new format and start again.
+        // format no longer matches, so the tap is rebuilt and the engine started again. Startup
+        // and restarts all run on one serial queue: starting the engine from two threads at once
+        // fails with -10868 (format not supported).
         session.configurationObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
         ) { [weak session] _ in
-            session?.restartAfterConfigurationChange()
+            guard let session else { return }
+            session.audioQueue.async {
+                guard !session.isStopping else { return }
+                if let format = session.startEngineRetrying() {
+                    Log.dictation.notice("Microphone reconfigured (now \(Int(format.sampleRate)) Hz × \(format.channelCount)); recording continues")
+                } else {
+                    Log.dictation.error("Microphone changed mid-recording and didn't come back")
+                }
+            }
         }
 
-        engine.prepare()
-        try engine.start()
+        let started: AVAudioFormat? = await withCheckedContinuation { done in
+            session.audioQueue.async { done.resume(returning: session.startEngineRetrying()) }
+        }
+        guard let tapFormat = started else {
+            await session.cancel()
+            throw SessionError.noInputDevice
+        }
         try await analyzer.start(inputSequence: inputs)
         Log.dictation.info("Recording from \(device.name) (\(device.transport), device \(Int(device.nominalSampleRate)) Hz, tap \(Int(tapFormat.sampleRate)) Hz × \(tapFormat.channelCount)) into \(audioURL.lastPathComponent)")
         return session
@@ -196,31 +211,29 @@ final class SpeechSession: @unchecked Sendable {
         return hardwareFormat
     }
 
-    /// Tries for about two seconds: long enough for AirPods to finish switching to call mode.
-    private func installTapRetrying() async -> AVAudioFormat? {
+    /// (Re)installs the tap and starts the engine, retrying for about two seconds: long enough
+    /// for AirPods to finish switching to call mode. Runs on `audioQueue` only.
+    private func startEngineRetrying() -> AVAudioFormat? {
+        dispatchPrecondition(condition: .onQueue(audioQueue))
+        guard let engine else { return nil }
         for attempt in 1...10 {
-            if let format = installTap() { return format }
-            Log.dictation.info("Microphone not ready (attempt \(attempt)); retrying")
-            try? await Task.sleep(for: .milliseconds(200))
+            guard !isStopping else { return nil }
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
+            if let format = installTap() {
+                engine.prepare()
+                do {
+                    try engine.start()
+                    return format
+                } catch {
+                    Log.dictation.error("Couldn't start the microphone at \(Int(format.sampleRate)) Hz (attempt \(attempt)): \(error.localizedDescription)")
+                }
+            } else {
+                Log.dictation.info("Microphone not ready (attempt \(attempt)); retrying")
+            }
+            Thread.sleep(forTimeInterval: 0.2)
         }
         return nil
-    }
-
-    private func restartAfterConfigurationChange() {
-        guard let engine, !isStopping else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        guard let format = installTap() else {
-            Log.dictation.error("Microphone changed mid-recording and has no usable format yet; retrying")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.restartAfterConfigurationChange() }
-            return
-        }
-        do {
-            engine.prepare()
-            try engine.start()
-            Log.dictation.notice("Microphone reconfigured (now \(Int(format.sampleRate)) Hz × \(format.channelCount)); recording continues")
-        } catch {
-            Log.dictation.error("Couldn't restart the microphone after it changed: \(error.localizedDescription)")
-        }
     }
 
     /// Tracks loudness for the meter and the end-of-recording log line, and notices the first
@@ -336,8 +349,10 @@ final class SpeechSession: @unchecked Sendable {
         isStopping = true
         removeObserver()
         if let engine {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
+            audioQueue.sync {
+                engine.inputNode.removeTap(onBus: 0)
+                engine.stop()
+            }
         }
         inputContinuation?.finish()
         recordingFile = nil
@@ -381,8 +396,10 @@ final class SpeechSession: @unchecked Sendable {
         isStopping = true
         removeObserver()
         if let engine {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
+            audioQueue.sync {
+                engine.inputNode.removeTap(onBus: 0)
+                engine.stop()
+            }
         }
         inputContinuation?.finish()
         analysisTask?.cancel()
