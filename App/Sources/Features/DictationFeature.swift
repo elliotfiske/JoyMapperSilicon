@@ -43,6 +43,11 @@ struct DictationFeature {
         var phase: Phase = .idle
         var mode: DictationMode?
         var liveText = ""
+        /// 0…1, for the panel's meter while listening.
+        var inputLevel: Float = 0
+        /// The microphone the current recording uses.
+        var inputDeviceName: String?
+        var microphones: [AudioInputDevice] = []
         /// The dictation in progress (or just finished).
         var current: DictationRecord?
         var history: IdentifiedArrayOf<DictationRecord> = []
@@ -73,7 +78,9 @@ struct DictationFeature {
         case hotkeysStarted(Bool)
         case command(DictationCommand)
         case beginRecording(mode: DictationMode, source: String)
-        case recordingStarted
+        case recordingStarted(device: String)
+        case inputLevel(Float)
+        case refreshMicrophones
         case recordingFailed(String)
         case liveText(String)
         case screenContextRead(ScreenContext)
@@ -150,9 +157,19 @@ struct DictationFeature {
             case let .beginRecording(mode, source):
                 return beginRecording(mode: mode, source: source, state: &state)
 
-            case .recordingStarted:
+            case let .recordingStarted(device):
                 guard state.phase == .starting else { return .none }
                 state.phase = .listening
+                state.inputDeviceName = device
+                return .none
+
+            case let .inputLevel(level):
+                guard state.phase.isRecording else { return .none }
+                state.inputLevel = level
+                return .none
+
+            case .refreshMicrophones:
+                state.microphones = dictation.inputDevices()
                 return .none
 
             case let .recordingFailed(message):
@@ -342,6 +359,8 @@ struct DictationFeature {
         state.phase = .starting
         state.mode = mode
         state.liveText = ""
+        state.inputLevel = 0
+        state.inputDeviceName = nil
         state.screenContext = nil
         state.current = DictationRecord(
             id: id,
@@ -352,6 +371,7 @@ struct DictationFeature {
         let dictionaryTerms = state.dictionary.map(\.term)
         let settings = state.settings
         let cache = state.symbolCache
+        let deviceUID = settings.inputDeviceUID
         Log.dictation.notice("Recording (\(mode.rawValue), from \(source))")
 
         return .merge(
@@ -361,10 +381,13 @@ struct DictationFeature {
                 let cachedSymbols = app.flatMap { cache[$0.bundleID] } ?? []
                 let hints = dictionaryTerms + cachedSymbols
                 do {
-                    let live = try await dictation.begin(id, hints)
-                    await send(.recordingStarted)
-                    for await text in live {
-                        await send(.liveText(text))
+                    let updates = try await dictation.begin(id, hints, deviceUID)
+                    for await update in updates {
+                        switch update {
+                        case let .audioStarted(device): await send(.recordingStarted(device: device))
+                        case let .level(level): await send(.inputLevel(level))
+                        case let .text(text): await send(.liveText(text))
+                        }
                     }
                 } catch {
                     await send(.recordingFailed(error.localizedDescription))
@@ -394,6 +417,7 @@ struct DictationFeature {
         record.duration = duration
         record.appName = app?.appName
         record.appBundleID = app?.bundleID
+        record.inputDevice = state.inputDeviceName
         state.liveText = text
         // Saved now, before anything else can fail.
         save(record, in: &state)

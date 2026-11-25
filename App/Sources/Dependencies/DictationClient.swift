@@ -9,8 +9,11 @@ struct DictationClient: Sendable {
     var commands: @Sendable () -> AsyncStream<DictationCommand>
     /// Starts listening for hotkeys. False until Accessibility is granted.
     var startHotkeys: @Sendable (HotkeyMonitor.Options) async -> Bool
-    /// Starts recording. The stream carries the live transcript.
-    var begin: @Sendable (_ id: UUID, _ hints: [String]) async throws -> AsyncStream<String>
+    /// Starts recording from `deviceUID` (empty: the system default). The stream carries the
+    /// live transcript, the input level, and when audio actually began.
+    var begin: @Sendable (_ id: UUID, _ hints: [String], _ deviceUID: String) async throws -> AsyncStream<SpeechUpdate>
+    /// Connected microphones, for the picker.
+    var inputDevices: @Sendable () -> [AudioInputDevice]
     /// Stops recording and returns what was recognized.
     var finish: @Sendable () async -> (text: String, duration: TimeInterval)
     var discard: @Sendable () async -> Void
@@ -67,13 +70,25 @@ final class DictationRuntime: @unchecked Sendable {
         return commandStream
     }
 
-    func begin(id: UUID, hints: [String]) async throws -> AsyncStream<String> {
+    init() {
+        // Logged so a "switched mics and it stopped hearing me" report shows what changed.
+        AudioDevices.observeChanges {
+            let name = AudioDevices.defaultInput().map { "\($0.name) (\($0.transport))" } ?? "none"
+            Log.dictation.notice("Audio devices changed; default input is now \(name)")
+        }
+    }
+
+    func begin(id: UUID, hints: [String], deviceUID: String) async throws -> AsyncStream<SpeechUpdate> {
         await discard()
-        let newSession = try await SpeechSession.start(hints: hints, recordingTo: history.audioURL(for: id))
+        let newSession = try await SpeechSession.start(
+            hints: hints,
+            deviceUID: deviceUID.isEmpty ? nil : deviceUID,
+            recordingTo: history.audioURL(for: id)
+        )
         lock.lock()
         session = newSession
         lock.unlock()
-        return newSession.liveText
+        return newSession.updates
     }
 
     func finish() async -> (text: String, duration: TimeInterval) {
@@ -102,7 +117,8 @@ extension DictationClient: DependencyKey {
             startHotkeys: { options in
                 await MainActor.run { runtime.hotkeys.start(options: options) }
             },
-            begin: { id, hints in try await runtime.begin(id: id, hints: hints) },
+            begin: { id, hints, deviceUID in try await runtime.begin(id: id, hints: hints, deviceUID: deviceUID) },
+            inputDevices: { AudioDevices.inputs() },
             finish: { await runtime.finish() },
             discard: { await runtime.discard() },
             screenContext: {
@@ -139,6 +155,7 @@ extension DictationClient: DependencyKey {
         commands: unimplemented("DictationClient.commands", placeholder: AsyncStream { $0.finish() }),
         startHotkeys: unimplemented("DictationClient.startHotkeys", placeholder: false),
         begin: unimplemented("DictationClient.begin", placeholder: AsyncStream { $0.finish() }),
+        inputDevices: { [] },
         finish: unimplemented("DictationClient.finish", placeholder: ("", 0)),
         discard: unimplemented("DictationClient.discard"),
         screenContext: unimplemented("DictationClient.screenContext", placeholder: .empty),

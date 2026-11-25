@@ -10,6 +10,24 @@ struct DictationSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Microphone") {
+                Picker("Record from", selection: $store.settings.inputDeviceUID) {
+                    Text("System default").tag("")
+                    ForEach(store.microphones) { mic in
+                        Text(mic.isBluetooth ? "\(mic.name) (Bluetooth)" : mic.name).tag(mic.uid)
+                    }
+                    let chosen = store.settings.inputDeviceUID
+                    if !chosen.isEmpty, !store.microphones.contains(where: { $0.uid == chosen }) {
+                        Text("Disconnected microphone (using the default)").tag(chosen)
+                    }
+                }
+                .accessibilityIdentifier("dictation-microphone")
+                Text("Pick one mic to keep dictation from following the system default around. Bluetooth headsets such as AirPods switch into a call mode when their mic opens, which takes a moment and lowers the sound quality; the panel turns red once audio is actually coming in.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .onAppear { store.send(.refreshMicrophones) }
+
             Section("Shortcuts") {
                 Toggle("Hold Right ⌥ to dictate", isOn: $store.settings.holdKeyEnabled)
                     .accessibilityIdentifier("dictation-hold-key")

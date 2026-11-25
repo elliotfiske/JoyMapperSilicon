@@ -2,8 +2,19 @@ import AVFoundation
 import Foundation
 import Speech
 
+/// What a recording reports while it runs.
+enum SpeechUpdate: Equatable, Sendable {
+    /// The microphone delivered its first audio. Bluetooth headsets take a moment to switch on
+    /// their mic, so the panel only says "Listening" from here.
+    case audioStarted(device: String)
+    /// Input loudness, 0…1, about 10 times a second.
+    case level(Float)
+    /// Everything recognized so far, final words plus the guess at the current ones.
+    case text(String)
+}
+
 /// One recording: microphone audio goes to a file on disk and to on-device speech recognition at
-/// the same time. `liveText` updates as words are recognized, before they're final.
+/// the same time. `updates` carries the live transcript, the input level, and when audio began.
 ///
 /// With `JOYMAPPER_DICTATION_AUDIO_FILE=<path>` it reads that file instead of the microphone, so
 /// tests (and you, with `say -o`) can dictate without speaking.
@@ -12,20 +23,22 @@ final class SpeechSession: @unchecked Sendable {
         case microphoneDenied
         case noAudioFormat
         case noInputDevice
+        case couldNotSelectDevice(String, OSStatus)
 
         var errorDescription: String? {
             switch self {
             case .microphoneDenied: "Microphone access is off. Turn it on in System Settings → Privacy & Security → Microphone."
             case .noAudioFormat: "Speech recognition has no usable audio format."
             case .noInputDevice: "No microphone found."
+            case let .couldNotSelectDevice(name, status): "Couldn't record from \(name) (error \(status))."
             }
         }
     }
 
     static let audioFileEnvironmentKey = "JOYMAPPER_DICTATION_AUDIO_FILE"
 
-    let liveText: AsyncStream<String>
-    private let liveContinuation: AsyncStream<String>.Continuation
+    let updates: AsyncStream<SpeechUpdate>
+    private let updateContinuation: AsyncStream<SpeechUpdate>.Continuation
     private let analyzer: SpeechAnalyzer
     private let transcriber: DictationTranscriber
     private let inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
@@ -38,6 +51,14 @@ final class SpeechSession: @unchecked Sendable {
     private var finalized = ""
     private var volatile = ""
     private var resultCount = 0
+    // Input statistics, for the log line at the end and the level meter.
+    private var deviceName = "audio file"
+    private var firstAudioAt: Date?
+    private var peak: Float = 0
+    private var sumSquares: Double = 0
+    private var sampleCount = 0
+    private var lastLevelAt = Date.distantPast
+    private var configurationObserver: NSObjectProtocol?
 
     private init(
         analyzer: SpeechAnalyzer,
@@ -49,11 +70,12 @@ final class SpeechSession: @unchecked Sendable {
         self.transcriber = transcriber
         self.engine = engine
         self.inputContinuation = inputContinuation
-        (liveText, liveContinuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+        (updates, updateContinuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(8))
     }
 
     /// `hints` are words recognition should favor: dictionary terms and on-screen symbols.
-    static func start(hints: [String], recordingTo audioURL: URL) async throws -> SpeechSession {
+    /// `deviceUID` picks the microphone; nil or a disconnected one means the system default.
+    static func start(hints: [String], deviceUID: String?, recordingTo audioURL: URL) async throws -> SpeechSession {
         let locale = await DictationTranscriber.supportedLocale(equivalentTo: Locale.current)
             ?? Locale(identifier: "en-US")
         let transcriber = DictationTranscriber(
@@ -76,7 +98,7 @@ final class SpeechSession: @unchecked Sendable {
         if let path = ProcessInfo.processInfo.environment[audioFileEnvironmentKey] {
             return try await startFromFile(URL(filePath: path), analyzer: analyzer, transcriber: transcriber, recordingTo: audioURL)
         }
-        return try await startFromMicrophone(analyzer: analyzer, transcriber: transcriber, recordingTo: audioURL)
+        return try await startFromMicrophone(deviceUID: deviceUID, analyzer: analyzer, transcriber: transcriber, recordingTo: audioURL)
     }
 
     /// Recognition slows down and gets worse past a few hundred hints.
@@ -85,6 +107,7 @@ final class SpeechSession: @unchecked Sendable {
     // MARK: - Microphone
 
     private static func startFromMicrophone(
+        deviceUID: String?,
         analyzer: SpeechAnalyzer,
         transcriber: DictationTranscriber,
         recordingTo audioURL: URL
@@ -94,13 +117,21 @@ final class SpeechSession: @unchecked Sendable {
             throw SessionError.noAudioFormat
         }
 
+        // Pick the device explicitly instead of trusting AVAudioEngine's idea of the default:
+        // it can keep using a microphone the system has already switched away from.
+        guard let device = AudioDevices.resolve(uid: deviceUID) else { throw SessionError.noInputDevice }
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        if let unit = input.audioUnit {
+            let status = AudioDevices.setDevice(device.id, on: unit)
+            guard status == noErr else { throw SessionError.couldNotSelectDevice(device.name, status) }
+        }
         let micFormat = input.outputFormat(forBus: 0)
-        guard micFormat.sampleRate > 0 else { throw SessionError.noInputDevice }
+        guard micFormat.sampleRate > 0, micFormat.channelCount > 0 else { throw SessionError.noInputDevice }
 
         let (inputs, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
         let session = SpeechSession(analyzer: analyzer, transcriber: transcriber, engine: engine, inputContinuation: continuation)
+        session.deviceName = device.name
         session.recordingFile = try AVAudioFile(forWriting: audioURL, settings: micFormat.settings)
         session.listenForResults()
 
@@ -108,14 +139,62 @@ final class SpeechSession: @unchecked Sendable {
         input.installTap(onBus: 0, bufferSize: 4096, format: micFormat) { [weak session] buffer, _ in
             guard let session else { return }
             try? session.recordingFile?.write(from: buffer)
+            session.measure(buffer)
             guard let converted = Self.convert(buffer, with: converter, to: analyzerFormat) else { return }
             continuation.yield(AnalyzerInput(buffer: converted))
         }
+
+        // AirPods switching modes, or the device going away, reconfigures the engine and stops
+        // it. Say so instead of recording silence.
+        session.configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+        ) { [weak session] _ in
+            let format = engine.inputNode.outputFormat(forBus: 0)
+            Log.dictation.error("Microphone changed mid-recording (now \(Int(format.sampleRate)) Hz, \(format.channelCount) ch); this recording may be cut short")
+            session?.updateContinuation.yield(.level(0))
+        }
+
         engine.prepare()
         try engine.start()
         try await analyzer.start(inputSequence: inputs)
-        Log.dictation.info("Recording from \(Int(micFormat.sampleRate)) Hz microphone into \(audioURL.lastPathComponent)")
+        Log.dictation.info("Recording from \(device.name) (\(device.transport), device \(Int(device.nominalSampleRate)) Hz, tap \(Int(micFormat.sampleRate)) Hz × \(micFormat.channelCount)) into \(audioURL.lastPathComponent)")
         return session
+    }
+
+    /// Tracks loudness for the meter and the end-of-recording log line, and notices the first
+    /// real audio (Bluetooth mics deliver zeros while they switch on).
+    private func measure(_ buffer: AVAudioPCMBuffer) {
+        guard let samples = buffer.floatChannelData?[0] else { return }
+        let count = Int(buffer.frameLength)
+        var bufferPeak: Float = 0
+        var bufferSum: Double = 0
+        for index in 0..<count {
+            let value = samples[index]
+            bufferPeak = max(bufferPeak, abs(value))
+            bufferSum += Double(value * value)
+        }
+        let now = Date()
+        lock.lock()
+        peak = max(peak, bufferPeak)
+        sumSquares += bufferSum
+        sampleCount += count
+        let isFirstAudio = firstAudioAt == nil && bufferPeak > 0.0005
+        if isFirstAudio { firstAudioAt = now }
+        let levelDue = now.timeIntervalSince(lastLevelAt) > 0.1
+        if levelDue { lastLevelAt = now }
+        let name = deviceName
+        lock.unlock()
+
+        if isFirstAudio {
+            let wait = Int(now.timeIntervalSince(startedAt) * 1000)
+            Log.dictation.info("First audio from \(name) after \(wait) ms")
+            updateContinuation.yield(.audioStarted(device: name))
+        }
+        if levelDue {
+            let rms = count > 0 ? Float((bufferSum / Double(count)).squareRoot()) : 0
+            // Speech sits around 0.02–0.2 RMS; stretch it so the meter moves.
+            updateContinuation.yield(.level(min(rms * 8, 1)))
+        }
     }
 
     private static func convert(_ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter?, to format: AVAudioFormat) -> AVAudioPCMBuffer? {
@@ -149,6 +228,7 @@ final class SpeechSession: @unchecked Sendable {
         try? FileManager.default.copyItem(at: fileURL, to: audioURL)
         let session = SpeechSession(analyzer: analyzer, transcriber: transcriber, engine: nil, inputContinuation: nil)
         session.listenForResults()
+        session.updateContinuation.yield(.audioStarted(device: "audio file"))
         let file = try AVAudioFile(forReading: fileURL)
         session.analysisTask = Task {
             do {
@@ -181,7 +261,7 @@ final class SpeechSession: @unchecked Sendable {
                     let count = resultCount
                     lock.unlock()
                     if count == 1 { Log.dictation.info("First words recognized") }
-                    liveContinuation.yield(live)
+                    updateContinuation.yield(.text(live))
                 }
             } catch {
                 Log.dictation.error("Speech recognition failed: \(error.localizedDescription)")
@@ -204,13 +284,32 @@ final class SpeechSession: @unchecked Sendable {
             Log.dictation.error("Couldn't finish recognition: \(error.localizedDescription)")
         }
         await resultsTask?.value
-        liveContinuation.finish()
+        updateContinuation.finish()
+        removeObserver()
         lock.lock()
         let text = (finalized + volatile).trimmingCharacters(in: .whitespacesAndNewlines)
         let count = resultCount
+        let summary = statsSummary()
         lock.unlock()
-        Log.dictation.info("Recognition finished after \(count) results")
+        Log.dictation.info("Recognition finished after \(count) results. \(summary)")
         return (text, Date().timeIntervalSince(startedAt))
+    }
+
+    /// "MacBook Pro Microphone: first audio 310 ms, peak 0.39, RMS 0.051". Call with `lock` held.
+    private func statsSummary() -> String {
+        guard engine != nil else { return "Source: audio file" }
+        let rms = sampleCount > 0 ? (sumSquares / Double(sampleCount)).squareRoot() : 0
+        let firstAudio = firstAudioAt.map { "\(Int($0.timeIntervalSince(startedAt) * 1000)) ms" } ?? "never"
+        var summary = String(format: "\(deviceName): first audio \(firstAudio), peak %.3f, RMS %.4f", peak, rms)
+        if peak < 0.01 { summary += " (nearly silent: wrong or muted microphone?)" }
+        return summary
+    }
+
+    private func removeObserver() {
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
     }
 
     /// Throws the recording away without waiting for recognition.
@@ -223,6 +322,7 @@ final class SpeechSession: @unchecked Sendable {
         analysisTask?.cancel()
         await analyzer.cancelAndFinishNow()
         resultsTask?.cancel()
-        liveContinuation.finish()
+        updateContinuation.finish()
+        removeObserver()
     }
 }

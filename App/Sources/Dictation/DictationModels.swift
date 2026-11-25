@@ -9,6 +9,8 @@ struct DictationRecord: Codable, Equatable, Identifiable, Sendable {
     /// The app that was in front when recording started: where the text goes.
     var appName: String?
     var appBundleID: String?
+    /// The microphone it was recorded from.
+    var inputDevice: String?
     /// What started it: "hotkey", "joycon", "panel".
     var trigger: String
     /// What on-device recognition heard.
@@ -91,6 +93,8 @@ struct DictationSettings: Codable, Equatable, Sendable {
     var holdKeyEnabled = true
     /// ⌃⌥Space starts and stops; ⌃⌥V pastes the last dictation.
     var toggleKeysEnabled = true
+    /// The microphone's Core Audio UID; empty means the system default input.
+    var inputDeviceUID = ""
     /// Read symbol names from the frontmost window to help recognition and cleanup.
     var screenContextEnabled = true
     /// A published-CSV URL for the team dictionary (Google Sheets: File → Share → Publish to web).

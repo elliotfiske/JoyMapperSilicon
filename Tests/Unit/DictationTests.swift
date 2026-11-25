@@ -37,11 +37,13 @@ final class DictationFeatureTests: XCTestCase {
             $0.continuousClock = ImmediateClock()
             $0.system.frontmostApp = { FrontmostApp(bundleID: "dev.zed.Zed", name: "Zed") }
             $0.dictation.audioFileName = { "\($0.uuidString).caf" }
-            $0.dictation.begin = { _, hints in
+            $0.dictation.begin = { _, hints, _ in
                 recorder.record { $0.hints.append(hints) }
                 return AsyncStream { continuation in
-                    continuation.yield("um the")
-                    continuation.yield("um the joy con")
+                    continuation.yield(.audioStarted(device: "Test mic"))
+                    continuation.yield(.level(0.4))
+                    continuation.yield(.text("um the"))
+                    continuation.yield(.text("um the joy con"))
                     continuation.finish()
                 }
             }
@@ -67,7 +69,11 @@ final class DictationFeatureTests: XCTestCase {
         await store.send(.command(.holdStarted(source: "joycon")))
         await store.receive(\.beginRecording)
         await store.receive(\.screenContextRead)
-        await store.receive(\.recordingStarted) { $0.phase = .listening }
+        await store.receive(\.recordingStarted) {
+            $0.phase = .listening
+            $0.inputDeviceName = "Test mic"
+        }
+        await store.receive(\.inputLevel) { $0.inputLevel = 0.4 }
         await store.receive(\.liveText) { $0.liveText = "um the" }
 
         await store.send(.command(.holdEnded)) { $0.phase = .recognizing }
@@ -90,6 +96,7 @@ final class DictationFeatureTests: XCTestCase {
         XCTAssertEqual(final?.finalText, "The JoyConManager")
         XCTAssertEqual(final?.pasted, true)
         XCTAssertEqual(final?.appName, "Zed")
+        XCTAssertEqual(final?.inputDevice, "Test mic")
         XCTAssertGreaterThanOrEqual(recorder.saved.count, 3)
         XCTAssertEqual(store.state.symbolCache["dev.zed.Zed"], ["JoyConManager"])
     }

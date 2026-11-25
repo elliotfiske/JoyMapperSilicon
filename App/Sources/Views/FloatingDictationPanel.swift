@@ -105,6 +105,9 @@ struct FloatingDictationView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 StatusDot(phase: store.phase)
+                if store.phase == .listening {
+                    LevelMeter(level: store.inputLevel)
+                }
                 Text(statusText)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -153,7 +156,11 @@ struct FloatingDictationView: View {
 
     private var displayText: String {
         if store.liveText.isEmpty {
-            return store.phase.isRecording ? "Listening…" : ""
+            switch store.phase {
+            case .starting: return "Waiting for the microphone… (Bluetooth headsets take a moment)"
+            case .listening: return "Listening on \(store.inputDeviceName ?? "the microphone")…"
+            default: return ""
+            }
         }
         return store.liveText
     }
@@ -161,13 +168,34 @@ struct FloatingDictationView: View {
     private var statusText: String {
         switch store.phase {
         case .idle: ""
-        case .starting: "Starting…"
+        case .starting: "Opening microphone…"
         case .listening: store.mode == .hold ? "Listening — release to finish" : "Listening — ⌃⌥Space to finish"
         case .recognizing: "Finishing…"
         case .cleaning: "Cleaning up…"
         case .done: store.current?.pasted == true ? "Pasted" : (store.current?.correctionError == nil ? "Done" : "Done (not cleaned up)")
         case let .failed(message): message
         }
+    }
+}
+
+/// Five bars that follow the input level, so it's obvious whether the mic hears you.
+private struct LevelMeter: View {
+    let level: Float
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(0..<5, id: \.self) { index in
+                let threshold = Float(index) / 5
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(level > threshold ? Color.red : Color.secondary.opacity(0.25))
+                    .frame(width: 3, height: 4 + CGFloat(index) * 2.5)
+            }
+        }
+        .animation(.linear(duration: 0.08), value: level)
+        .accessibilityElement()
+        .accessibilityLabel("Input level")
+        .accessibilityValue(String(format: "%.2f", level))
+        .accessibilityIdentifier("dictation-level")
     }
 }
 
@@ -186,7 +214,8 @@ private struct StatusDot: View {
 
     private var color: Color {
         switch phase {
-        case .starting, .listening: .red
+        case .starting: .orange
+        case .listening: .red
         case .recognizing, .cleaning: .orange
         case .done: .green
         case .failed: .yellow
