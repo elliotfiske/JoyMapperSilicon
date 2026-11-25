@@ -59,6 +59,9 @@ final class SpeechSession: @unchecked Sendable {
     private var sampleCount = 0
     private var lastLevelAt = Date.distantPast
     private var configurationObserver: NSObjectProtocol?
+    private var analyzerFormat: AVAudioFormat?
+    /// Set once `stop` or `cancel` begins, so a late reconfiguration doesn't restart the mic.
+    private var isStopping = false
 
     private init(
         analyzer: SpeechAnalyzer,
@@ -121,46 +124,82 @@ final class SpeechSession: @unchecked Sendable {
         // it can keep using a microphone the system has already switched away from.
         guard let device = AudioDevices.resolve(uid: deviceUID) else { throw SessionError.noInputDevice }
         let engine = AVAudioEngine()
-        let input = engine.inputNode
-        if let unit = input.audioUnit {
+        if let unit = engine.inputNode.audioUnit {
             let status = AudioDevices.setDevice(device.id, on: unit)
             guard status == noErr else { throw SessionError.couldNotSelectDevice(device.name, status) }
         }
-        let micFormat = input.outputFormat(forBus: 0)
-        guard micFormat.sampleRate > 0, micFormat.channelCount > 0 else { throw SessionError.noInputDevice }
 
         let (inputs, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
         let session = SpeechSession(analyzer: analyzer, transcriber: transcriber, engine: engine, inputContinuation: continuation)
         session.deviceName = device.name
-        session.recordingFile = try AVAudioFile(forWriting: audioURL, settings: micFormat.settings)
+        session.analyzerFormat = analyzerFormat
+        // Saved after conversion, so the file's format stays fixed even if the mic's changes.
+        // The file's processing format must match the buffers written to it exactly.
+        session.recordingFile = try AVAudioFile(
+            forWriting: audioURL,
+            settings: analyzerFormat.settings,
+            commonFormat: analyzerFormat.commonFormat,
+            interleaved: analyzerFormat.isInterleaved
+        )
         session.listenForResults()
 
-        let converter = AVAudioConverter(from: micFormat, to: analyzerFormat)
-        input.installTap(onBus: 0, bufferSize: 4096, format: micFormat) { [weak session] buffer, _ in
-            guard let session else { return }
-            try? session.recordingFile?.write(from: buffer)
-            session.measure(buffer)
-            guard let converted = Self.convert(buffer, with: converter, to: analyzerFormat) else { return }
-            continuation.yield(AnalyzerInput(buffer: converted))
-        }
+        guard let tapFormat = session.installTap() else { throw SessionError.noInputDevice }
 
-        // AirPods switching modes, or the device going away, reconfigures the engine and stops
-        // it. Say so instead of recording silence.
+        // Bluetooth headsets change sample rate when their mic opens (AirPods drop to 16 or
+        // 24 kHz call mode), and devices come and go. Each time, AVAudioEngine stops and the tap's
+        // format no longer matches, so rebuild the tap for the new format and start again.
         session.configurationObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { [weak session] _ in
-            // Opening the mic reconfigures the engine once by itself; only later changes matter.
-            guard let session, Date().timeIntervalSince(session.startedAt) > 1 else { return }
-            let format = engine.inputNode.outputFormat(forBus: 0)
-            Log.dictation.error("Microphone changed mid-recording (now \(Int(format.sampleRate)) Hz, \(format.channelCount) ch); this recording may be cut short")
-            session.updateContinuation.yield(.level(0))
+            session?.restartAfterConfigurationChange()
         }
 
         engine.prepare()
         try engine.start()
         try await analyzer.start(inputSequence: inputs)
-        Log.dictation.info("Recording from \(device.name) (\(device.transport), device \(Int(device.nominalSampleRate)) Hz, tap \(Int(micFormat.sampleRate)) Hz × \(micFormat.channelCount)) into \(audioURL.lastPathComponent)")
+        Log.dictation.info("Recording from \(device.name) (\(device.transport), device \(Int(device.nominalSampleRate)) Hz, tap \(Int(tapFormat.sampleRate)) Hz × \(tapFormat.channelCount)) into \(audioURL.lastPathComponent)")
         return session
+    }
+
+    /// Taps the input in the format the hardware delivers right now. AVAudioEngine raises an
+    /// Objective-C exception (which Swift can't catch) if the tap format's sample rate doesn't
+    /// match the hardware's, so the format is read fresh every time, never cached. Returns nil
+    /// when the device has no usable format at the moment (mid-switch).
+    @discardableResult
+    private func installTap() -> AVAudioFormat? {
+        guard let engine, let analyzerFormat else { return nil }
+        let input = engine.inputNode
+        let hardwareFormat = input.inputFormat(forBus: 0)
+        guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else { return nil }
+        let converter = AVAudioConverter(from: hardwareFormat, to: analyzerFormat)
+        let continuation = inputContinuation
+        input.installTap(onBus: 0, bufferSize: 4096, format: hardwareFormat) { [weak self] buffer, _ in
+            guard let self else { return }
+            self.measure(buffer)
+            guard let converted = Self.convert(buffer, with: converter, to: analyzerFormat),
+                  converted.frameLength > 0
+            else { return }
+            try? self.recordingFile?.write(from: converted)
+            continuation?.yield(AnalyzerInput(buffer: converted))
+        }
+        return hardwareFormat
+    }
+
+    private func restartAfterConfigurationChange() {
+        guard let engine, !isStopping else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        guard let format = installTap() else {
+            Log.dictation.error("Microphone changed mid-recording and has no usable format yet; retrying")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.restartAfterConfigurationChange() }
+            return
+        }
+        do {
+            engine.prepare()
+            try engine.start()
+            Log.dictation.notice("Microphone reconfigured (now \(Int(format.sampleRate)) Hz × \(format.channelCount)); recording continues")
+        } catch {
+            Log.dictation.error("Couldn't restart the microphone after it changed: \(error.localizedDescription)")
+        }
     }
 
     /// Tracks loudness for the meter and the end-of-recording log line, and notices the first
@@ -273,6 +312,8 @@ final class SpeechSession: @unchecked Sendable {
 
     /// Stops recording, waits for recognition to finish the last words, and returns the text.
     func stop() async -> (text: String, duration: TimeInterval) {
+        isStopping = true
+        removeObserver()
         if let engine {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
@@ -316,6 +357,8 @@ final class SpeechSession: @unchecked Sendable {
 
     /// Throws the recording away without waiting for recognition.
     func cancel() async {
+        isStopping = true
+        removeObserver()
         if let engine {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
