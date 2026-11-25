@@ -149,9 +149,11 @@ final class SpeechSession: @unchecked Sendable {
         session.configurationObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
         ) { [weak session] _ in
+            // Opening the mic reconfigures the engine once by itself; only later changes matter.
+            guard let session, Date().timeIntervalSince(session.startedAt) > 1 else { return }
             let format = engine.inputNode.outputFormat(forBus: 0)
             Log.dictation.error("Microphone changed mid-recording (now \(Int(format.sampleRate)) Hz, \(format.channelCount) ch); this recording may be cut short")
-            session?.updateContinuation.yield(.level(0))
+            session.updateContinuation.yield(.level(0))
         }
 
         engine.prepare()
