@@ -9,6 +9,10 @@ struct DictationRecord: Codable, Equatable, Identifiable, Sendable {
     /// The app that was in front when recording started: where the text goes.
     var appName: String?
     var appBundleID: String?
+    /// What Apple's live recognizer heard, when the final pass used another engine.
+    var liveText: String?
+    /// Which engine produced `rawText`: "parakeet-v2" or "apple".
+    var recognizer: String?
     /// The microphone it was recorded from.
     var inputDevice: String?
     /// What started it: "hotkey", "joycon", "panel".
@@ -67,6 +71,20 @@ enum DictationAction: String, Codable, Sendable, CaseIterable, Hashable {
     }
 }
 
+enum Recognizer: String, Codable, Sendable, CaseIterable, Hashable {
+    /// Parakeet v2 on the saved recording; Apple's text if Parakeet isn't ready.
+    case parakeet
+    /// Apple's SpeechAnalyzer only.
+    case apple
+
+    var displayName: String {
+        switch self {
+        case .parakeet: "Parakeet v2 (more accurate)"
+        case .apple: "Apple (built in)"
+        }
+    }
+}
+
 /// A word or phrase speech recognition tends to get wrong, with how it should be written.
 struct DictionaryEntry: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
@@ -93,6 +111,8 @@ struct DictationSettings: Codable, Equatable, Sendable {
     var holdKeyEnabled = true
     /// ⌃⌥Space starts and stops; ⌃⌥V pastes the last dictation.
     var toggleKeysEnabled = true
+    /// The final-pass recognizer. Apple's always draws the live preview.
+    var recognizer: Recognizer = .parakeet
     /// The microphone's Core Audio UID; empty means the system default input.
     var inputDeviceUID = ""
     /// Read symbol names from the frontmost window to help recognition and cleanup.
@@ -130,6 +150,7 @@ struct DictationSettings: Codable, Equatable, Sendable {
         holdKeyEnabled = value(.holdKeyEnabled, defaults.holdKeyEnabled)
         toggleKeysEnabled = value(.toggleKeysEnabled, defaults.toggleKeysEnabled)
         inputDeviceUID = value(.inputDeviceUID, defaults.inputDeviceUID)
+        recognizer = value(.recognizer, defaults.recognizer)
         screenContextEnabled = value(.screenContextEnabled, defaults.screenContextEnabled)
         sharedDictionaryURL = value(.sharedDictionaryURL, defaults.sharedDictionaryURL)
         tokenCommand = value(.tokenCommand, defaults.tokenCommand)

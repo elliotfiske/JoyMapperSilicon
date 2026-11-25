@@ -32,10 +32,11 @@ A floating pill on the right edge of the screen: an `NSPanel` that never takes f
 
 - **Start and stop:** hold Right ⌥, ⌃⌥Space to start or stop, ⌃⌥V to paste the last dictation (`HotkeyMonitor`, a session event tap that needs Accessibility). Joy-Con buttons can also have a `DictationAction`: in the starter R mapping, C is hold-to-talk and Home pastes the last dictation.
 - **Pipeline (`DictationFeature`):**
-  1. Record from the microphone into a file, and run on-device `SpeechAnalyzer`/`DictationTranscriber` at the same time, so the transcript is live.
-  2. Bias recognition with dictionary terms plus symbols read from the frontmost window (`ScreenContext`, through Accessibility).
-  3. Claude cleans up the text through the company LLM gateway (`CleanupService`, Sonnet 5.5 with `thinking: between_tools` at low effort).
-  4. Paste the result (`TextInserter`, which puts your clipboard back afterwards).
+  1. Record from the microphone into a file (48 kHz float), and run on-device `SpeechAnalyzer`/`DictationTranscriber` at the same time, so the transcript is live.
+  2. On stop, **Parakeet TDT 0.6B v2** (`ParakeetRecognizer`, FluidAudio, about 0.1 s) transcribes the saved file, and its text replaces Apple's. Apple's is kept in `liveText`. If Parakeet isn't loaded, fails, or returns nothing where Apple heard words, Apple's text is used. The model (about 450 MB) downloads at first launch into `Application Support/JoyMapperSilicon/Models`, shared by every copy, and later loads in about 0.2 s. `Tools/SpeechBakeoff` compares recognizers on saved recordings: Parakeet beat Apple and Whisper there.
+  3. Bias Apple's live recognition with dictionary terms plus symbols read from the frontmost window (`ScreenContext`, through Accessibility).
+  4. Claude cleans up the text through the company LLM gateway (`CleanupService`, Sonnet 5.5 with `thinking: between_tools` at low effort).
+  5. Paste the result (`TextInserter`, which puts your clipboard back afterwards).
   If cleanup fails or times out, the raw text is pasted instead.
 - **Never commit the gateway URL, key, token command or anything company-specific.** All of it lives in `~/Library/Application Support/JoyMapperSilicon/dictation-settings.json`, and a static key, if used, in the Keychain (`GatewayKeychain`).
 - **Gateway auth (`GatewayAuth`):** either a static key, or a *token command* that prints a short-lived token (an SSO helper).

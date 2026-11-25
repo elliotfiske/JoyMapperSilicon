@@ -10,6 +10,25 @@ struct DictationSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Recognition") {
+                Picker("Final text from", selection: $store.settings.recognizer) {
+                    ForEach(Recognizer.allCases, id: \.self) { recognizer in
+                        Text(recognizer.displayName).tag(recognizer)
+                    }
+                }
+                .accessibilityIdentifier("dictation-recognizer")
+                if store.settings.recognizer == .parakeet {
+                    LabeledContent("Parakeet") {
+                        Text(store.recognizerStatus.displayText)
+                            .foregroundStyle(store.recognizerStatus == .ready ? Color.secondary : Color.orange)
+                    }
+                    .accessibilityIdentifier("dictation-recognizer-status")
+                }
+                Text("Apple's recognizer shows the live text while you talk. With Parakeet, the saved recording is transcribed again when you stop (about 0.1 s), and that text is what gets cleaned up and pasted. Until the model is downloaded, Apple's text is used.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Microphone") {
                 Picker("Record from", selection: $store.settings.inputDeviceUID) {
                     Text("System default").tag("")
@@ -190,6 +209,12 @@ private struct HistoryRow: View {
             .foregroundStyle(.secondary)
             Text(record.displayText.isEmpty ? "(nothing recognized)" : record.displayText)
                 .textSelection(.enabled)
+            if let live = record.liveText {
+                Text("Apple heard: \(live)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
             if let corrected = record.correctedText, corrected != record.rawText {
                 Text("Heard: \(record.rawText)")
                     .font(.caption)

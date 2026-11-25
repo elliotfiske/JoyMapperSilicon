@@ -17,6 +17,10 @@ struct DictationClient: Sendable {
     /// Stops recording and returns what was recognized.
     var finish: @Sendable () async -> (text: String, duration: TimeInterval)
     var discard: @Sendable () async -> Void
+    /// Downloads and loads the final-pass recognizer. Status comes back on the stream.
+    var prepareRecognizer: @Sendable () async -> ParakeetRecognizer.Status
+    /// Transcribes a finished recording with Parakeet. Nil if it isn't loaded yet.
+    var transcribeRecording: @Sendable (_ id: UUID) async throws -> String?
     /// Reads names off the frontmost window. Slow-ish (up to a few hundred ms).
     var screenContext: @Sendable () async -> ScreenContext
     var clean: @Sendable (CleanupRequest, DictationSettings) async throws -> CleanupResult
@@ -123,6 +127,13 @@ extension DictationClient: DependencyKey {
             inputDevices: { AudioDevices.inputs() },
             finish: { await runtime.finish() },
             discard: { await runtime.discard() },
+            prepareRecognizer: {
+                try? await ParakeetRecognizer.shared.prepare()
+                return await ParakeetRecognizer.shared.status
+            },
+            transcribeRecording: { id in
+                try await ParakeetRecognizer.shared.transcribe(runtime.history.audioURL(for: id))
+            },
             screenContext: {
                 let app = await MainActor.run { NSWorkspace.shared.frontmostApplication }
                 return await Task.detached { ScreenContext.capture(from: app) }.value
@@ -161,6 +172,8 @@ extension DictationClient: DependencyKey {
         inputDevices: { [] },
         finish: unimplemented("DictationClient.finish", placeholder: ("", 0)),
         discard: unimplemented("DictationClient.discard"),
+        prepareRecognizer: unimplemented("DictationClient.prepareRecognizer", placeholder: .notLoaded),
+        transcribeRecording: unimplemented("DictationClient.transcribeRecording", placeholder: nil),
         screenContext: unimplemented("DictationClient.screenContext", placeholder: .empty),
         clean: unimplemented("DictationClient.clean", placeholder: CleanupResult(text: "", model: "", milliseconds: 0)),
         insert: unimplemented("DictationClient.insert"),

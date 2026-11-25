@@ -34,6 +34,8 @@ let project = Project(
             requirement: .upToNextMajor(from: "1.26.2")
         ),
         .local(path: "Packages/BackgroundDriver"),
+        // On-device Parakeet speech recognition (the dictation final pass).
+        .remote(url: "https://github.com/FluidInference/FluidAudio", requirement: .upToNextMinor(from: "0.18.4")),
     ],
     settings: .settings(base: baseSettings),
     targets: [
@@ -65,6 +67,7 @@ let project = Project(
             dependencies: [
                 .package(product: "ComposableArchitecture"),
                 .package(product: "BackgroundDriver"),
+                .package(product: "FluidAudio"),
             ],
             // Signing goes on the target: Tuist's target defaults would otherwise reset the
             // identity to ad-hoc.

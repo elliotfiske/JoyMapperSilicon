@@ -56,6 +56,8 @@ final class DictationFeatureTests: XCTestCase {
                 }
             }
             $0.dictation.finish = { (recognized, 2.5) }
+            // Parakeet not loaded: the final text is Apple's.
+            $0.dictation.transcribeRecording = { _ in nil }
             $0.dictation.screenContext = {
                 ScreenContext(appName: "Zed", bundleID: "dev.zed.Zed", windowTitle: "hyderabad — AppDelegate.swift", symbols: ["JoyConManager"])
             }
@@ -107,6 +109,33 @@ final class DictationFeatureTests: XCTestCase {
         XCTAssertEqual(final?.inputDevice, "Test mic")
         XCTAssertGreaterThanOrEqual(recorder.saved.count, 3)
         XCTAssertEqual(store.state.symbolCache["dev.zed.Zed"], ["JoyConManager"])
+    }
+
+    func testParakeetTextReplacesApplesAndIsWhatGetsCleanedUp() async {
+        let recorder = Recorder()
+        let store = makeStore(recorder: recorder)
+        store.dependencies.dictation.transcribeRecording = { _ in "Um, the JoyConManager." }
+        await store.send(.command(.toggle(source: "hotkey")))
+        await store.receive(\.recordingStarted)
+        await store.send(.command(.toggle(source: "hotkey")))
+        await store.receive(\.cleaned)
+        await store.receive(\.inserted)
+        XCTAssertEqual(recorder.cleanRequests.first?.rawText, "Um, the JoyConManager.")
+        let record = store.state.history.first
+        XCTAssertEqual(record?.recognizer, "parakeet-v2")
+        XCTAssertEqual(record?.liveText, "um the joy con manager")
+    }
+
+    func testEmptyParakeetResultKeepsApplesText() async {
+        let recorder = Recorder()
+        let store = makeStore(recorder: recorder)
+        store.dependencies.dictation.transcribeRecording = { _ in "" }
+        await store.send(.command(.toggle(source: "hotkey")))
+        await store.receive(\.recordingStarted)
+        await store.send(.command(.toggle(source: "hotkey")))
+        await store.receive(\.cleaned)
+        XCTAssertEqual(recorder.cleanRequests.first?.rawText, "um the joy con manager")
+        XCTAssertEqual(store.state.history.first?.recognizer, "apple")
     }
 
     func testCleanupFailurePastesWhatWasHeard() async {

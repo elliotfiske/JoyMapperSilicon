@@ -52,6 +52,7 @@ struct DictationFeature {
         var current: DictationRecord?
         var history: IdentifiedArrayOf<DictationRecord> = []
         var hasGatewayKey = false
+        var recognizerStatus: ParakeetRecognizer.Status = .notLoaded
         /// The token helper needs the user to sign in; cleanup is skipped until they do.
         var needsLogin = false
         var isLoggingIn = false
@@ -89,7 +90,8 @@ struct DictationFeature {
         case screenContextRead(ScreenContext)
         case stopTapped
         case cancelTapped
-        case recognized(text: String, duration: TimeInterval)
+        case recognized(text: String, duration: TimeInterval, liveText: String, recognizer: String)
+        case recognizerStatus(ParakeetRecognizer.Status)
         case cleaned(TaskResult<CleanupResult>)
         case inserted
         case collapse
@@ -114,7 +116,7 @@ struct DictationFeature {
     @Dependency(\.uuid) var uuid
     @Dependency(\.date.now) var now
 
-    enum CancelID { case session, collapse, hotkeys }
+    enum CancelID { case session, collapse, hotkeys, recognizer }
 
     var body: some ReducerOf<Self> {
         BindingReducer()
@@ -122,7 +124,10 @@ struct DictationFeature {
             switch action {
             case .binding(\.settings):
                 let options = HotkeyMonitor.Options(holdKey: state.settings.holdKeyEnabled, toggleKeys: state.settings.toggleKeysEnabled)
-                return .run { _ in _ = await dictation.startHotkeys(options) }
+                return .merge(
+                    .run { _ in _ = await dictation.startHotkeys(options) },
+                    state.recognizerStatus == .ready ? .none : prepareRecognizerIfNeeded(state.settings)
+                )
 
             case .binding:
                 return .none
@@ -150,7 +155,8 @@ struct DictationFeature {
                         }
                     }
                     .cancellable(id: CancelID.hotkeys),
-                    sharedURL == nil ? .none : .send(.refreshSharedDictionaryTapped)
+                    sharedURL == nil ? .none : .send(.refreshSharedDictionaryTapped),
+                    prepareRecognizerIfNeeded(state.settings)
                 )
 
             case let .hotkeysStarted(isOn):
@@ -219,8 +225,12 @@ struct DictationFeature {
                 state.liveText = ""
                 return .merge(.cancel(id: CancelID.session), .run { _ in await dictation.discard() })
 
-            case let .recognized(text, duration):
-                return recognized(text: text, duration: duration, state: &state)
+            case let .recognized(text, duration, liveText, recognizer):
+                return recognized(text: text, duration: duration, liveText: liveText, recognizer: recognizer, state: &state)
+
+            case let .recognizerStatus(status):
+                state.recognizerStatus = status
+                return .none
 
             case let .cleaned(.success(result)):
                 state.needsLogin = false
@@ -441,19 +451,53 @@ struct DictationFeature {
         )
     }
 
+    private func prepareRecognizerIfNeeded(_ settings: DictationSettings) -> Effect<Action> {
+        guard settings.recognizer == .parakeet else { return .none }
+        return .run { send in
+            await send(.recognizerStatus(.loading))
+            await send(.recognizerStatus(dictation.prepareRecognizer()))
+        }
+        .cancellable(id: CancelID.recognizer, cancelInFlight: true)
+    }
+
     private func stopRecording(_ state: inout State) -> Effect<Action> {
         guard state.phase.isRecording else { return .none }
         state.phase = .recognizing
+        let usesParakeet = state.settings.recognizer == .parakeet
+        let id = state.current?.id
         return .run { send in
-            let (text, duration) = await dictation.finish()
-            await send(.recognized(text: text, duration: duration))
+            let (appleText, duration) = await dictation.finish()
+            var text = appleText
+            var engine = "apple"
+            if usesParakeet, let id {
+                let started = Date()
+                do {
+                    if let parakeet = try await dictation.transcribeRecording(id) {
+                        let milliseconds = Int(Date().timeIntervalSince(started) * 1000)
+                        Log.dictation.info("Parakeet: \(parakeet.count) characters in \(milliseconds) ms (Apple heard \(appleText.count))")
+                        // An empty Parakeet result on audio Apple understood is more likely a miss
+                        // than silence; keep Apple's.
+                        if !parakeet.isEmpty || appleText.isEmpty {
+                            text = parakeet
+                            engine = "parakeet-v2"
+                        }
+                    } else {
+                        Log.dictation.info("Parakeet isn't loaded yet; using Apple's text")
+                    }
+                } catch {
+                    Log.dictation.error("Parakeet failed, using Apple's text: \(error.localizedDescription)")
+                }
+            }
+            await send(.recognized(text: text, duration: duration, liveText: appleText, recognizer: engine))
         }
     }
 
-    private func recognized(text: String, duration: TimeInterval, state: inout State) -> Effect<Action> {
+    private func recognized(text: String, duration: TimeInterval, liveText: String, recognizer: String, state: inout State) -> Effect<Action> {
         guard var record = state.current else { return .none }
         let app = state.screenContext
         record.rawText = text
+        record.recognizer = recognizer
+        record.liveText = liveText == text ? nil : liveText
         record.duration = duration
         record.appName = app?.appName
         record.appBundleID = app?.bundleID
