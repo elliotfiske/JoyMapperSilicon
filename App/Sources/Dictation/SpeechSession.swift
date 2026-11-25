@@ -135,13 +135,15 @@ final class SpeechSession: @unchecked Sendable {
         let session = SpeechSession(analyzer: analyzer, transcriber: transcriber, engine: engine, inputContinuation: continuation)
         session.deviceName = device.name
         session.analyzerFormat = analyzerFormat
-        // Saved after conversion, so the file's format stays fixed even if the mic's changes.
-        // The file's processing format must match the buffers written to it exactly.
+        // The archive is kept at full quality (48 kHz float, mono), whatever rate the mic runs
+        // at, so the file's format stays fixed when the mic's changes mid-recording. The
+        // recognizer gets its own 16 kHz copy. The file's processing format must match the
+        // buffers written to it exactly.
         session.recordingFile = try AVAudioFile(
             forWriting: audioURL,
-            settings: analyzerFormat.settings,
-            commonFormat: analyzerFormat.commonFormat,
-            interleaved: analyzerFormat.isInterleaved
+            settings: Self.archiveFormat.settings,
+            commonFormat: Self.archiveFormat.commonFormat,
+            interleaved: Self.archiveFormat.isInterleaved
         )
         session.listenForResults()
 
@@ -189,15 +191,21 @@ final class SpeechSession: @unchecked Sendable {
         let input = engine.inputNode
         let hardwareFormat = input.inputFormat(forBus: 0)
         guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else { return nil }
-        let converter = AVAudioConverter(from: hardwareFormat, to: analyzerFormat)
+        let toAnalyzer = Self.makeConverter(from: hardwareFormat, to: analyzerFormat)
+        let archiveFormat = Self.archiveFormat
+        let needsArchiveConversion = hardwareFormat != archiveFormat
+        let toArchive = needsArchiveConversion ? Self.makeConverter(from: hardwareFormat, to: archiveFormat) : nil
         let continuation = inputContinuation
         let tapBlock: AVAudioNodeTapBlock = { [weak self] buffer, _ in
             guard let self else { return }
             self.measure(buffer)
-            guard let converted = Self.convert(buffer, with: converter, to: analyzerFormat),
+            let archived = needsArchiveConversion ? Self.convert(buffer, with: toArchive, to: archiveFormat) : buffer
+            if let archived, archived.frameLength > 0 {
+                try? self.recordingFile?.write(from: archived)
+            }
+            guard let converted = Self.convert(buffer, with: toAnalyzer, to: analyzerFormat),
                   converted.frameLength > 0
             else { return }
-            try? self.recordingFile?.write(from: converted)
             continuation?.yield(AnalyzerInput(buffer: converted))
         }
         let exception = JMCatchException {
@@ -270,6 +278,18 @@ final class SpeechSession: @unchecked Sendable {
             // Speech sits around 0.02–0.2 RMS; stretch it so the meter moves.
             updateContinuation.yield(.level(min(rms * 8, 1)))
         }
+    }
+
+    /// Full quality, mono: what the saved recording is stored as.
+    static let archiveFormat = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)!
+
+    /// Best resampling quality: the default aliases when going down to 16 kHz, which sounds
+    /// buzzy and can't help recognition.
+    private static func makeConverter(from input: AVAudioFormat, to output: AVAudioFormat) -> AVAudioConverter? {
+        let converter = AVAudioConverter(from: input, to: output)
+        converter?.sampleRateConverterQuality = AVAudioQuality.max.rawValue
+        converter?.sampleRateConverterAlgorithm = AVSampleRateConverterAlgorithm_Mastering
+        return converter
     }
 
     private static func convert(_ buffer: AVAudioPCMBuffer, with converter: AVAudioConverter?, to format: AVAudioFormat) -> AVAudioPCMBuffer? {
