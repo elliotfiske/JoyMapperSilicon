@@ -372,6 +372,19 @@ final class GatewayAuthTests: XCTestCase {
         XCTAssertEqual(runs, 1, "the cached token is reused")
     }
 
+    func testQuietRunStopsAsSoonAsTheHelperWantsABrowser() async throws {
+        var settings = DictationSettings()
+        settings.tokenCommand = "echo 'Opening browser for login...' >&2; sleep 30; echo token"
+        let started = Date()
+        do {
+            _ = try await GatewayAuth().credential(settings: settings)
+            XCTFail("expected loginRequired")
+        } catch {
+            XCTAssertEqual(error as? CleanupError, .loginRequired)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "didn't wait out the helper")
+    }
+
     func testFailingHelperMeansLoginRequired() async {
         var settings = DictationSettings()
         settings.tokenCommand = "exit 1"

@@ -47,11 +47,13 @@ actor GatewayAuth {
         let result = try await Self.run(
             command: settings.tokenCommand,
             environment: interactive ? [:] : Self.quietEnvironment(settings),
-            timeout: interactive ? Self.interactiveTimeout : Self.quietTimeout
+            timeout: interactive ? Self.interactiveTimeout : Self.quietTimeout,
+            stopWhenAskingForBrowser: !interactive
         )
         let elapsed = Int(Date().timeIntervalSince(started) * 1000)
         guard result.status == 0, let token = Self.token(fromOutput: result.output) else {
-            Log.dictation.error("Token helper didn't produce a token \(mode) (exit \(result.status), \(elapsed) ms)\(result.timedOut ? ", timed out" : ""); login needed")
+            let why = result.wantedBrowser ? ", it wanted to sign in" : (result.timedOut ? ", timed out" : "")
+            Log.dictation.error("Token helper didn't produce a token \(mode) (exit \(result.status), \(elapsed) ms\(why)); login needed")
             throw CleanupError.loginRequired
         }
         let expiry = Self.expiry(ofJWT: token) ?? Date().addingTimeInterval(Self.defaultLifetime)
@@ -99,11 +101,20 @@ actor GatewayAuth {
         var status: Int32
         var output: String
         var timedOut: Bool
+        /// Stopped early because it said it was opening a browser to sign in.
+        var wantedBrowser = false
     }
 
-    /// Runs `command` through the login shell's PATH. Stdout is captured and never logged;
-    /// stderr is dropped (it may describe the login, but never carries the token).
-    static func run(command: String, environment: [String: String], timeout: TimeInterval) async throws -> RunResult {
+    /// Runs `command` through the login shell's PATH. Stdout is captured and never logged.
+    /// Stderr is only watched, never logged: helpers print progress there, not tokens. With
+    /// `stopWhenAskingForBrowser`, a line mentioning a browser ends a quiet run right away
+    /// instead of after the timeout (the helper would wait minutes for a sign-in).
+    static func run(
+        command: String,
+        environment: [String: String],
+        timeout: TimeInterval,
+        stopWhenAskingForBrowser: Bool = false
+    ) async throws -> RunResult {
         try await withCheckedThrowingContinuation { continuation in
             let process = Process()
             process.executableURL = URL(filePath: "/bin/zsh")
@@ -111,16 +122,27 @@ actor GatewayAuth {
             process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
             let stdout = Pipe()
             process.standardOutput = stdout
-            process.standardError = FileHandle.nullDevice
+            let stderr = Pipe()
+            process.standardError = stderr
             process.standardInput = FileHandle.nullDevice
 
             let timedOut = LockedFlag()
+            let wantedBrowser = LockedFlag()
+            stderr.fileHandleForReading.readabilityHandler = { handle in
+                let chunk = String(decoding: handle.availableData, as: UTF8.self)
+                guard stopWhenAskingForBrowser, chunk.localizedCaseInsensitiveContains("browser") else { return }
+                guard process.isRunning, !wantedBrowser.value else { return }
+                wantedBrowser.set()
+                Self.terminateTree(process)
+            }
             process.terminationHandler = { finished in
+                stderr.fileHandleForReading.readabilityHandler = nil
                 let data = stdout.fileHandleForReading.readDataToEndOfFile()
                 continuation.resume(returning: RunResult(
                     status: finished.terminationStatus,
                     output: String(decoding: data, as: UTF8.self),
-                    timedOut: timedOut.value
+                    timedOut: timedOut.value,
+                    wantedBrowser: wantedBrowser.value
                 ))
             }
             do {
@@ -132,9 +154,22 @@ actor GatewayAuth {
             DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
                 guard process.isRunning else { return }
                 timedOut.set()
-                process.terminate()
+                Self.terminateTree(process)
             }
         }
+    }
+}
+
+extension GatewayAuth {
+    /// Stops the helper and anything it started (a sign-in listener would otherwise keep
+    /// running and hold the helper's lock, making the next Log in wait for it).
+    static func terminateTree(_ process: Process) {
+        let pkill = Process()
+        pkill.executableURL = URL(filePath: "/usr/bin/pkill")
+        pkill.arguments = ["-TERM", "-P", String(process.processIdentifier)]
+        try? pkill.run()
+        pkill.waitUntilExit()
+        process.terminate()
     }
 }
 
