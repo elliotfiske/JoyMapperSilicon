@@ -2,6 +2,7 @@
 import BackgroundDriver
 #endif
 import AppKit
+import ApplicationServices
 import ComposableArchitecture
 import SwiftUI
 
@@ -36,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let store = Self.store else { return }
-        Log.app.notice("Launched \(Bundle.main.bundlePath) pid \(ProcessInfo.processInfo.processIdentifier)")
+        Log.app.notice("Launched \(Bundle.main.bundlePath) pid \(ProcessInfo.processInfo.processIdentifier), Accessibility \(AXIsProcessTrusted() ? "granted" : "missing")")
         // Started here, not from the window, so controllers keep working with the window closed.
         store.send(.task)
         dictationPanel = FloatingDictationPanel(store: store.scope(state: \.dictation, action: \.dictation))

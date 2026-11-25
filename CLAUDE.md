@@ -57,11 +57,19 @@ The full reference is in `docs/switch2-ble-protocol.md`.
 - **Keep-alive:** macOS drops the link about 17 s after the host's last write. The app re-sends the player-lights command every second.
 - **Pairing:** in pairing mode, the app sends the four `0x15` commands, which store this Mac's Bluetooth address. After that, any button press reconnects the controller without SYNC. This probably replaces the console pairing; attaching the controller to the Switch 2 pairs it back to the console.
 
-## Accessibility permission
+## Accessibility permission and signing
 
-`CGEvent.post` **silently does nothing** without Accessibility permission. Check it with `AXIsProcessTrusted()`, and use the banner in the app.
+`CGEvent.post` and the dictation hotkey tap **silently do nothing** without Accessibility permission. The launch log line says `Accessibility granted` or `missing`.
 
-The app is signed with an Apple Development certificate, which keeps the grant across rebuilds. If it's lost anyway, toggle the app off and on in System Settings → Privacy & Security → Accessibility. To clear stale entries: `tccutil reset Accessibility com.elliotfiske.JoyMapperSilicon`.
+macOS ties the grant to the app's *designated requirement*:
+- An **ad-hoc** signature makes that requirement a hash of the binary. Every rebuild then loses the grant, while System Settings still shows it on. That's the "it's granted but nothing comes through" bug.
+- Debug builds therefore sign with a self-signed certificate, **"JoyMapper Silicon Local Signing"**, which exists only on this Mac. The requirement becomes `identifier "com.elliotfiske.JoyMapperSilicon" and certificate leaf = H"…"`, which survives rebuilds and works from any worktree. Check it with `codesign -d -r- <app>`.
+
+Setup and recovery:
+- **Once per Mac:** `scripts/setup-local-signing.sh`. It creates the certificate and asks for your password once, to trust it for code signing.
+- Without the certificate, the build fails. Run the script, or set `TUIST_SIGNING_IDENTITY=-` for ad-hoc.
+- Debug turns hardened runtime off. Its library validation only loads code with the app's Team ID, a self-signed certificate has none, so it would reject the debug dylib and the test bundle. Release keeps hardened runtime on.
+- If a stale grant ever sticks: `tccutil reset Accessibility com.elliotfiske.JoyMapperSilicon`, relaunch, then click **Grant…** in the app.
 
 ## Build, run, test
 

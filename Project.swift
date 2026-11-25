@@ -3,11 +3,22 @@ import ProjectDescription
 let bundleID = "com.elliotfiske.JoyMapperSilicon"
 let deployment: DeploymentTargets = .macOS("26.0")
 
-/// Sign with a real Apple Development certificate. macOS ties the Accessibility grant to the
-/// signer, so an ad-hoc signature (new on every build) loses the grant at each rebuild.
+/// macOS ties the Accessibility, Bluetooth and Microphone grants to the app's designated
+/// requirement. An ad-hoc signature makes that a hash of the binary, so every rebuild silently
+/// loses the grants (Settings still shows them on). Signing with a stable certificate makes it
+/// "this bundle ID, signed by this certificate" instead.
+///
+/// The default is a self-signed certificate that only exists on this Mac; create it once with
+/// `scripts/setup-local-signing.sh`. Override with `TUIST_SIGNING_IDENTITY=<name>`, or `-` for
+/// ad-hoc (CI, or a Mac without the certificate; permissions then reset on every build).
+let signingIdentity = Environment.signingIdentity.getString(default: "JoyMapper Silicon Local Signing")
+
 let signingSettings: SettingsDictionary = [
-    "DEVELOPMENT_TEAM": "CKGA64W25Z",
-    "CODE_SIGN_STYLE": "Automatic",
+    "CODE_SIGN_STYLE": "Manual",
+    "CODE_SIGN_IDENTITY": .string(signingIdentity),
+    "DEVELOPMENT_TEAM": "",
+    // A self-signed certificate has no team; don't let Xcode insist on one.
+    "OTHER_CODE_SIGN_FLAGS": "--timestamp=none",
 ]
 
 let baseSettings: SettingsDictionary = signingSettings.merging([
@@ -55,10 +66,18 @@ let project = Project(
                 .package(product: "ComposableArchitecture"),
                 .package(product: "BackgroundDriver"),
             ],
-            settings: .settings(base: [
-                "ENABLE_HARDENED_RUNTIME": "YES",
-                "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
-            ])
+            // Signing goes on the target: Tuist's target defaults would otherwise reset the
+            // identity to ad-hoc.
+            settings: .settings(
+                base: signingSettings.merging([
+                    "ENABLE_HARDENED_RUNTIME": "YES",
+                    "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+                ]) { _, new in new },
+                // No hardened runtime in Debug: its library validation only loads code with the
+                // app's Team ID, and a self-signed certificate has none, so it would reject the
+                // debug dylib and the unit test bundle. Release keeps it.
+                debug: ["ENABLE_HARDENED_RUNTIME": "NO"]
+            )
         ),
 
         // MARK: - Unit tests: reducers, the Joy-Con 2 report parser, the mapping engine
@@ -70,7 +89,9 @@ let project = Project(
             deploymentTargets: deployment,
             infoPlist: .default,
             sources: ["Tests/Unit/**"],
-            dependencies: [.target(name: "JoyMapperSilicon")]
+            dependencies: [.target(name: "JoyMapperSilicon")],
+            // Loaded into the hardened app, so library validation wants the same signer.
+            settings: .settings(base: signingSettings)
         ),
 
         // MARK: - Background UI tests
