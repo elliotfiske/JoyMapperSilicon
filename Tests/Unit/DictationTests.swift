@@ -138,6 +138,34 @@ final class DictationFeatureTests: XCTestCase {
         XCTAssertEqual(store.state.history.first?.recognizer, "apple")
     }
 
+    func testLongSilenceAsksIfYouAreStillThereButKeepsRecording() async {
+        let recorder = Recorder()
+        let nudges = LockIsolated(0)
+        let store = makeStore(recorder: recorder)
+        store.dependencies.dictation.playNudge = { nudges.withValue { $0 += 1 } }
+        await store.send(.command(.toggle(source: "hotkey")))
+        await store.receive(\.recordingStarted)
+
+        await store.send(.silence(299)) { $0.silentFor = 299 }
+        await store.send(.silence(300)) {
+            $0.silentFor = 300
+            $0.showsStillThereNudge = true
+        }
+        await store.send(.keepRecordingTapped) {
+            $0.showsStillThereNudge = false
+            $0.nextNudgeAt = 600
+        }
+        XCTAssertEqual(store.state.phase, .listening, "silence never stops a recording")
+
+        // Talking again resets it.
+        await store.send(.silence(2)) {
+            $0.silentFor = 2
+            $0.nextNudgeAt = 300
+        }
+        await store.finish()
+        XCTAssertEqual(nudges.value, 1)
+    }
+
     func testCleanupFailurePastesWhatWasHeard() async {
         let recorder = Recorder()
         let store = makeStore(recorder: recorder, clean: { _ in throw CleanupError.http(503, "down") })
@@ -433,5 +461,59 @@ final class DictationSettingsTests: XCTestCase {
         XCTAssertEqual(settings.gatewayURL, "https://gateway.test")
         XCTAssertEqual(settings.inputDeviceUID, "")
         XCTAssertTrue(settings.holdKeyEnabled)
+    }
+}
+
+final class SilenceTests: XCTestCase {
+    func testVoiceIsJudgedAgainstTheRoomsFloor() {
+        // A noisy room like the built-in mic's recent recordings (floor ≈ 0.013).
+        var noisy = VoiceActivityDetector()
+        for _ in 0..<20 { XCTAssertFalse(noisy.isVoice(rms: 0.013)) }
+        XCTAssertTrue(noisy.isVoice(rms: 0.045), "speech three times the floor")
+        XCTAssertFalse(noisy.isVoice(rms: 0.018), "a little above the floor is still room noise")
+
+        // A quiet room (floor ≈ 0.002): quieter speech still counts.
+        var quiet = VoiceActivityDetector()
+        for _ in 0..<20 { _ = quiet.isVoice(rms: 0.002) }
+        XCTAssertTrue(quiet.isVoice(rms: 0.012))
+    }
+
+    func testFloorFollowsTheRoomDown() {
+        var detector = VoiceActivityDetector()
+        _ = detector.isVoice(rms: 0.03) // started on a loud moment
+        _ = detector.isVoice(rms: 0.002)
+        XCTAssertEqual(detector.floor ?? 0, 0.002, accuracy: 0.0001)
+    }
+
+    /// One "chunk" per second; `v` voice, `.` silence.
+    private func run(_ pattern: String, maxKept: TimeInterval = 30, edge: TimeInterval = 1) -> (kept: String, trimmed: TimeInterval) {
+        var trimmer = SilenceTrimmer<Character>(maxKept: maxKept, edge: edge)
+        var kept = ""
+        for symbol in pattern {
+            kept += String(trimmer.add(symbol, seconds: 1, isVoice: symbol == "v"))
+        }
+        kept += String(trimmer.finish())
+        return (kept, trimmer.trimmedSeconds)
+    }
+
+    func testShortSilencesAreKeptWhole() {
+        let pattern = "vv" + String(repeating: ".", count: 25) + "vv"
+        XCTAssertEqual(run(pattern).kept, pattern)
+    }
+
+    func testLongSilenceKeepsOneSecondAtEachEnd() {
+        let result = run("vv" + String(repeating: ".", count: 300) + "vv")
+        XCTAssertEqual(result.kept, "vv..vv")
+        XCTAssertEqual(result.trimmed, 298)
+    }
+
+    func testLongSilenceAtTheEndKeepsItsEdges() {
+        let result = run("v" + String(repeating: ".", count: 100))
+        XCTAssertEqual(result.kept, "v..")
+    }
+
+    func testSeveralLongSilencesAreEachTrimmed() {
+        let gap = String(repeating: ".", count: 40)
+        XCTAssertEqual(run("v" + gap + "v" + gap + "v").kept, "v..v..v")
     }
 }

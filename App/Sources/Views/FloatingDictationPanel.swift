@@ -133,6 +133,9 @@ struct FloatingDictationView: View {
                 .accessibilityLabel(store.phase.isBusy ? "Cancel" : "Close")
                 .accessibilityIdentifier("dictation-cancel")
             }
+            if store.showsStillThereNudge {
+                StillThereRow(store: store)
+            }
             if store.needsLogin, !store.phase.isRecording {
                 LoginNeededRow(store: store)
             }
@@ -178,6 +181,31 @@ struct FloatingDictationView: View {
         case .done: store.current?.pasted == true ? "Pasted" : (store.current?.correctionError == nil ? "Done" : "Done (not cleaned up)")
         case let .failed(message): message
         }
+    }
+}
+
+/// After a long silence: recording carries on, but check the user meant to leave it running.
+struct StillThereRow: View {
+    let store: StoreOf<DictationFeature>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Still there? Recording has heard nothing for \(Int(store.silentFor / 60)) minutes.")
+                .font(.caption)
+            HStack {
+                Button("Keep recording") { store.send(.keepRecordingTapped) }
+                    .controlSize(.small)
+                    .accessibilityIdentifier("dictation-keep-recording")
+                Button("Finish") { store.send(.stopTapped) }
+                    .controlSize(.small)
+                    .accessibilityIdentifier("dictation-nudge-finish")
+                Spacer()
+            }
+        }
+        .padding(8)
+        .background(.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dictation-still-there")
     }
 }
 

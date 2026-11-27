@@ -11,6 +11,8 @@ enum SpeechUpdate: Equatable, Sendable {
     case level(Float)
     /// Everything recognized so far, final words plus the guess at the current ones.
     case text(String)
+    /// How long since the last voice, about once a second.
+    case silence(TimeInterval)
 }
 
 /// One recording: microphone audio goes to a file on disk and to on-device speech recognition at
@@ -59,6 +61,12 @@ final class SpeechSession: @unchecked Sendable {
     private var sampleCount = 0
     private var lastLevelAt = Date.distantPast
     private var configurationObserver: NSObjectProtocol?
+    // Silence: detected per tap buffer, used for the "still there?" nudge and to shorten long
+    // pauses in the saved file. Touched only from the tap (one thread at a time) and `stop`.
+    private var voiceDetector = VoiceActivityDetector()
+    private var trimmer = SilenceTrimmer<AVAudioPCMBuffer>()
+    private var lastVoiceAt = Date()
+    private var lastSilenceReportAt = Date.distantPast
     private var analyzerFormat: AVAudioFormat?
     /// Set once `stop` or `cancel` begins, so a late reconfiguration doesn't restart the mic.
     private var isStopping = false
@@ -198,10 +206,10 @@ final class SpeechSession: @unchecked Sendable {
         let continuation = inputContinuation
         let tapBlock: AVAudioNodeTapBlock = { [weak self] buffer, _ in
             guard let self else { return }
-            self.measure(buffer)
+            let isVoice = self.measure(buffer)
             let archived = needsArchiveConversion ? Self.convert(buffer, with: toArchive, to: archiveFormat) : buffer
             if let archived, archived.frameLength > 0 {
-                try? self.recordingFile?.write(from: archived)
+                self.archive(archived, isVoice: isVoice)
             }
             guard let converted = Self.convert(buffer, with: toAnalyzer, to: analyzerFormat),
                   converted.frameLength > 0
@@ -244,10 +252,20 @@ final class SpeechSession: @unchecked Sendable {
         return nil
     }
 
-    /// Tracks loudness for the meter and the end-of-recording log line, and notices the first
-    /// real audio (Bluetooth mics deliver zeros while they switch on).
-    private func measure(_ buffer: AVAudioPCMBuffer) {
-        guard let samples = buffer.floatChannelData?[0] else { return }
+    /// Writes to the saved file, minus the middle of any silence longer than 30 s.
+    private func archive(_ buffer: AVAudioPCMBuffer, isVoice: Bool) {
+        let seconds = Double(buffer.frameLength) / buffer.format.sampleRate
+        for chunk in trimmer.add(buffer, seconds: seconds, isVoice: isVoice) {
+            try? recordingFile?.write(from: chunk)
+        }
+    }
+
+    /// Tracks loudness for the meter and the end-of-recording log line, notices the first real
+    /// audio (Bluetooth mics deliver zeros while they switch on), and reports silence. Returns
+    /// whether the buffer holds voice.
+    @discardableResult
+    private func measure(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard let samples = buffer.floatChannelData?[0] else { return false }
         let count = Int(buffer.frameLength)
         var bufferPeak: Float = 0
         var bufferSum: Double = 0
@@ -273,11 +291,21 @@ final class SpeechSession: @unchecked Sendable {
             Log.dictation.info("First audio from \(name) after \(wait) ms")
             updateContinuation.yield(.audioStarted(device: name))
         }
+        let rms = count > 0 ? Float((bufferSum / Double(count)).squareRoot()) : 0
         if levelDue {
-            let rms = count > 0 ? Float((bufferSum / Double(count)).squareRoot()) : 0
             // Speech sits around 0.02–0.2 RMS; stretch it so the meter moves.
             updateContinuation.yield(.level(min(rms * 8, 1)))
         }
+
+        // Before the first real audio there's nothing to judge.
+        guard firstAudioAt != nil else { return false }
+        let isVoice = voiceDetector.isVoice(rms: rms)
+        if isVoice { lastVoiceAt = now }
+        if now.timeIntervalSince(lastSilenceReportAt) >= 1 {
+            lastSilenceReportAt = now
+            updateContinuation.yield(.silence(now.timeIntervalSince(lastVoiceAt)))
+        }
+        return isVoice
     }
 
     /// Full quality, mono: what the saved recording is stored as.
@@ -375,6 +403,13 @@ final class SpeechSession: @unchecked Sendable {
             }
         }
         inputContinuation?.finish()
+        // The tap is gone, so nothing else touches the trimmer now.
+        for chunk in trimmer.finish() {
+            try? recordingFile?.write(from: chunk)
+        }
+        if trimmer.trimmedSeconds > 0 {
+            Log.dictation.info("Left \(Int(trimmer.trimmedSeconds)) s of silence out of the saved recording")
+        }
         recordingFile = nil
         await analysisTask?.value
         do {

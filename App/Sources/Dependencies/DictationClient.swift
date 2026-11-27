@@ -17,6 +17,8 @@ struct DictationClient: Sendable {
     /// Stops recording and returns what was recognized.
     var finish: @Sendable () async -> (text: String, duration: TimeInterval)
     var discard: @Sendable () async -> Void
+    /// A soft sound for the "still there?" nudge.
+    var playNudge: @Sendable () async -> Void
     /// Downloads and loads the final-pass recognizer. Status comes back on the stream.
     var prepareRecognizer: @Sendable () async -> ParakeetRecognizer.Status
     /// Transcribes a finished recording with Parakeet. Nil if it isn't loaded yet.
@@ -127,6 +129,9 @@ extension DictationClient: DependencyKey {
             inputDevices: { AudioDevices.inputs() },
             finish: { await runtime.finish() },
             discard: { await runtime.discard() },
+            playNudge: {
+                await MainActor.run { _ = NSSound(named: "Tink")?.play() }
+            },
             prepareRecognizer: {
                 try? await ParakeetRecognizer.shared.prepare()
                 return await ParakeetRecognizer.shared.status
@@ -172,6 +177,7 @@ extension DictationClient: DependencyKey {
         inputDevices: { [] },
         finish: unimplemented("DictationClient.finish", placeholder: ("", 0)),
         discard: unimplemented("DictationClient.discard"),
+        playNudge: unimplemented("DictationClient.playNudge"),
         prepareRecognizer: unimplemented("DictationClient.prepareRecognizer", placeholder: .notLoaded),
         transcribeRecording: unimplemented("DictationClient.transcribeRecording", placeholder: nil),
         screenContext: unimplemented("DictationClient.screenContext", placeholder: .empty),

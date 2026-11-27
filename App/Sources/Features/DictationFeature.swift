@@ -53,6 +53,12 @@ struct DictationFeature {
         var history: IdentifiedArrayOf<DictationRecord> = []
         var hasGatewayKey = false
         var recognizerStatus: ParakeetRecognizer.Status = .notLoaded
+        /// Seconds since the last voice in the current recording.
+        var silentFor: TimeInterval = 0
+        /// "Are you still there?" after a long silence. Recording carries on either way.
+        var showsStillThereNudge = false
+        /// The silence length that brings the nudge up next; pushed back by "Keep recording".
+        var nextNudgeAt: TimeInterval = DictationFeature.nudgeAfter
         /// The token helper needs the user to sign in; cleanup is skipped until they do.
         var needsLogin = false
         var isLoggingIn = false
@@ -92,6 +98,8 @@ struct DictationFeature {
         case cancelTapped
         case recognized(text: String, duration: TimeInterval, liveText: String, recognizer: String)
         case recognizerStatus(ParakeetRecognizer.Status)
+        case silence(TimeInterval)
+        case keepRecordingTapped
         case cleaned(TaskResult<CleanupResult>)
         case inserted
         case collapse
@@ -117,6 +125,10 @@ struct DictationFeature {
     @Dependency(\.date.now) var now
 
     enum CancelID { case session, collapse, hotkeys, recognizer }
+
+    /// Silence before the "still there?" nudge. Long pauses are fine (reading a document while
+    /// dictating notes), so recording never stops on its own.
+    static let nudgeAfter: TimeInterval = 5 * 60
 
     var body: some ReducerOf<Self> {
         BindingReducer()
@@ -230,6 +242,25 @@ struct DictationFeature {
 
             case let .recognizerStatus(status):
                 state.recognizerStatus = status
+                return .none
+
+            case let .silence(seconds):
+                guard state.phase.isRecording else { return .none }
+                let voiceCameBack = seconds < state.silentFor
+                state.silentFor = seconds
+                if voiceCameBack {
+                    state.showsStillThereNudge = false
+                    state.nextNudgeAt = Self.nudgeAfter
+                    return .none
+                }
+                guard !state.showsStillThereNudge, seconds >= state.nextNudgeAt else { return .none }
+                state.showsStillThereNudge = true
+                Log.dictation.notice("Still recording after \(Int(seconds / 60)) min of silence; asking if you're still there")
+                return .run { _ in await dictation.playNudge() }
+
+            case .keepRecordingTapped:
+                state.showsStillThereNudge = false
+                state.nextNudgeAt = state.silentFor + Self.nudgeAfter
                 return .none
 
             case let .cleaned(.success(result)):
@@ -409,6 +440,9 @@ struct DictationFeature {
         state.phase = .starting
         state.mode = mode
         state.liveText = ""
+        state.silentFor = 0
+        state.showsStillThereNudge = false
+        state.nextNudgeAt = Self.nudgeAfter
         state.inputLevel = 0
         state.inputDeviceName = nil
         state.screenContext = nil
@@ -437,6 +471,7 @@ struct DictationFeature {
                         case let .audioStarted(device): await send(.recordingStarted(device: device))
                         case let .level(level): await send(.inputLevel(level))
                         case let .text(text): await send(.liveText(text))
+                        case let .silence(seconds): await send(.silence(seconds))
                         }
                     }
                 } catch {
@@ -463,6 +498,7 @@ struct DictationFeature {
     private func stopRecording(_ state: inout State) -> Effect<Action> {
         guard state.phase.isRecording else { return .none }
         state.phase = .recognizing
+        state.showsStillThereNudge = false
         let usesParakeet = state.settings.recognizer == .parakeet
         let id = state.current?.id
         return .run { send in

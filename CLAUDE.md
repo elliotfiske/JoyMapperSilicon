@@ -44,6 +44,10 @@ A floating pill on the right edge of the screen: an `NSPanel` that never takes f
   - If that fails, cleanup is skipped and the panel shows "Log in again to turn on Claude cleanup". Only the **Log in** button runs the command interactively, which may open a browser. The app never starts a sign-in on its own.
   - The token is kept in memory and fetched again 5 minutes before its JWT `exp`. A 401 triggers one quiet refetch and retry.
 - Settings decode with defaults for missing keys, so adding a setting doesn't reset an existing file.
+- **Silence (`Silence.swift`):** `VoiceActivityDetector` compares each tap buffer with a learned noise floor. A fixed threshold fails here: the built-in mic's floor has measured 0.002–0.016 RMS.
+  - Recording **never stops on silence**: reading a long document while dictating is normal.
+  - After 5 minutes without voice, the panel asks "Still there?" with a soft sound, plus Keep recording and Finish buttons.
+  - `SilenceTrimmer` keeps silences up to 30 s whole in the saved file. Longer ones keep 1 s at each end, and the rest is dropped (the log says how much). Apple's live recognizer still gets everything.
 - **History:** `Dictation/history.jsonl` (append-only; the newest line per ID wins) and `Dictation/Audio/<id>.caf`. Nothing is deleted.
 - **Test hooks:**
   - `JOYMAPPER_DICTATION_AUDIO_FILE=<file>` reads that file instead of the microphone. Make one with `say -o x.aiff "…"`.
