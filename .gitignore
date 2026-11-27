@@ -33,3 +33,7 @@ Framework/
 
 # Context
 .context/
+
+# Speech comparison tool
+Tools/SpeechBakeoff/.build/
+Tools/SpeechBakeoff/.swiftpm/
