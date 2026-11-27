@@ -88,7 +88,7 @@ enum Recognizer: String, Codable, Sendable, CaseIterable, Hashable {
 /// A word or phrase speech recognition tends to get wrong, with how it should be written.
 struct DictionaryEntry: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
-    /// The right spelling: "Life360", "CoreBluetooth", "Jiobit".
+    /// The right spelling: "Tailscale", "CoreBluetooth", "Supabase".
     var term: String
     /// What it's often heard as, comma-separated: "life three sixty, life 360".
     var heardAs: String = ""

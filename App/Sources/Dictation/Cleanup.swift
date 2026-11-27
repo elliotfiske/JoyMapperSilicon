@@ -123,8 +123,7 @@ enum CleanupService {
 
     static let systemPrompt = """
     You clean up text the user dictated by voice, just before it's pasted into the app they're \
-    using. They're often walking on a treadmill while they talk, mostly about software development \
-    at Life360.
+    using. They're often walking on a treadmill while they talk, mostly about software development.
 
     Return the text they meant to write:
     - Fix words speech recognition misheard. The dictionary and the symbols from their screen \

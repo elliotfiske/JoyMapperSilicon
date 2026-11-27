@@ -36,7 +36,7 @@ final class DictationFeatureTests: XCTestCase {
     ) -> TestStoreOf<DictationFeature> {
         var state = DictationFeature.State()
         state.$settings.withLock { $0 = settings }
-        state.$dictionary.withLock { $0 = [DictionaryEntry(id: UUID(1), term: "Life360", heardAs: "life three sixty")] }
+        state.$dictionary.withLock { $0 = [DictionaryEntry(id: UUID(1), term: "Supabase", heardAs: "super base")] }
         let store = TestStore(initialState: state) {
             DictationFeature()
         } withDependencies: {
@@ -96,8 +96,8 @@ final class DictationFeatureTests: XCTestCase {
         let request = recorder.cleanRequests.first
         XCTAssertEqual(request?.rawText, "um the joy con manager")
         XCTAssertEqual(request?.symbols, ["JoyConManager"])
-        XCTAssertEqual(request?.dictionary.map(\.term), ["Life360"])
-        XCTAssertEqual(recorder.hints.first, ["Life360"], "first dictation in an app: dictionary terms only")
+        XCTAssertEqual(request?.dictionary.map(\.term), ["Supabase"])
+        XCTAssertEqual(recorder.hints.first, ["Supabase"], "first dictation in an app: dictionary terms only")
 
         // Saved after recognition, then after cleanup, then after pasting.
         let final = store.state.history.first
@@ -258,12 +258,12 @@ final class DictationFeatureTests: XCTestCase {
             ]
         }
         let store = TestStore(initialState: state) { DictationFeature() } withDependencies: {
-            $0.dictation.fetchSharedDictionary = { _ in [DictionaryEntry(id: UUID(3), term: "Jiobit", source: "shared")] }
+            $0.dictation.fetchSharedDictionary = { _ in [DictionaryEntry(id: UUID(3), term: "Tailscale", source: "shared")] }
         }
         store.exhaustivity = .off(showSkippedAssertions: false)
         await store.send(.refreshSharedDictionaryTapped)
         await store.receive(\.sharedDictionaryFetched)
-        XCTAssertEqual(store.state.dictionary.map(\.term), ["Mine", "Jiobit"])
+        XCTAssertEqual(store.state.dictionary.map(\.term), ["Mine", "Tailscale"])
     }
 }
 
@@ -291,12 +291,12 @@ final class CleanupServiceTests: XCTestCase {
             rawText: "check the joy con manager",
             appName: "Xcode",
             windowTitle: "AppDelegate.swift",
-            dictionary: [DictionaryEntry(id: UUID(), term: "Life360", heardAs: "life three sixty")],
+            dictionary: [DictionaryEntry(id: UUID(), term: "Supabase", heardAs: "super base")],
             symbols: ["JoyConManager", "NSWindowController"]
         )
         let message = CleanupService.userMessage(for: request)
         XCTAssertTrue(message.contains("App: Xcode (window: AppDelegate.swift)"))
-        XCTAssertTrue(message.contains("- Life360 (often heard as: life three sixty)"))
+        XCTAssertTrue(message.contains("- Supabase (often heard as: super base)"))
         XCTAssertTrue(message.contains("JoyConManager, NSWindowController"))
         XCTAssertTrue(message.hasSuffix("<dictation>\ncheck the joy con manager\n</dictation>"))
     }
@@ -319,7 +319,7 @@ final class ScreenContextTests: XCTestCase {
         let text = """
         final class GameController { let manager = JoyConManager() }
         JoyConManager.shared.connectHandler = { controller in }
-        // open AppDelegate.swift and read the HTTP response from Life360 servers
+        // open AppDelegate.swift and read the HTTP response from Tailscale2 servers
         the and with some plain words here
         """
         let symbols = ScreenContext.extractSymbols(from: text)
@@ -327,7 +327,7 @@ final class ScreenContextTests: XCTestCase {
         XCTAssertTrue(symbols.contains("GameController"))
         XCTAssertTrue(symbols.contains("connectHandler"))
         XCTAssertTrue(symbols.contains("AppDelegate.swift"))
-        XCTAssertTrue(symbols.contains("Life360"))
+        XCTAssertTrue(symbols.contains("Tailscale2"))
         XCTAssertTrue(symbols.contains("HTTP"))
         XCTAssertFalse(symbols.contains("plain"))
         XCTAssertFalse(symbols.contains("final"))
@@ -344,13 +344,13 @@ final class SharedDictionaryTests: XCTestCase {
     func testParsesCSVWithHeaderAndQuotes() {
         let csv = #"""
         Term,Heard as
-        Life360,"life three sixty, life 360"
-        Jiobit,
+        Supabase,"super base, soup a base"
+        Tailscale,
         "Tile ""Mate""",tile mate
         """#
         let entries = SharedDictionary.parse(csv: csv)
-        XCTAssertEqual(entries.map(\.term), ["Life360", "Jiobit", "Tile \"Mate\""])
-        XCTAssertEqual(entries.first?.heardAs, "life three sixty, life 360")
+        XCTAssertEqual(entries.map(\.term), ["Supabase", "Tailscale", "Tile \"Mate\""])
+        XCTAssertEqual(entries.first?.heardAs, "super base, soup a base")
         XCTAssertTrue(entries.allSatisfy { $0.source == "shared" })
     }
 }

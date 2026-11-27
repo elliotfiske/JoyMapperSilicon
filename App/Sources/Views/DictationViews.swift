@@ -115,9 +115,9 @@ struct DictationSettingsView: View {
 
             Section("Dictionary") {
                 HStack {
-                    TextField("Term", text: $newTerm, prompt: Text("Life360"))
+                    TextField("Term", text: $newTerm, prompt: Text("Supabase"))
                         .accessibilityIdentifier("dictionary-term")
-                    TextField("Often heard as", text: $newHeardAs, prompt: Text("life three sixty"))
+                    TextField("Often heard as", text: $newHeardAs, prompt: Text("super base"))
                         .accessibilityIdentifier("dictionary-heard-as")
                     Button("Add") {
                         store.send(.addDictionaryEntry(term: newTerm, heardAs: newHeardAs))

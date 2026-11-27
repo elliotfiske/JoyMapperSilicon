@@ -72,7 +72,7 @@ struct ScreenContext: Equatable, Sendable {
     }
 
     /// Identifier-like words, most frequent first: CamelCase, camelCase, snake_case, kebab-case
-    /// file names, and words with digits like Life360. Plain lowercase words are left out:
+    /// file names, and words with digits like Switch2Central. Plain lowercase words are left out:
     /// recognition already knows English.
     static func extractSymbols(from text: String) -> [String] {
         var counts: [String: Int] = [:]
